@@ -1,5 +1,6 @@
 services:
   logbookviso:
+    name: logbookviso
     build: .
     container_name: logbookviso
     ports:
@@ -8,7 +9,7 @@ services:
       LOGBOOK_DB: /data/logbook.sqlite
     volumes:
       # SQLite-Datei vom Host einbinden (nur lesen)
-      - ./logbook.sqlite:/data/logbook.sqlite:ro
+      - ./logbook.sqlite:/opt/docker/logbookviso/data/logbook.sqlite:ro
     networks:
       - proxy
     restart: unless-stopped
