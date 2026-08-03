@@ -46,6 +46,25 @@ docker run --rm -p 5000:5000 \
   logbookviso
 ```
 
+### SWAG Reverse Proxy
+
+Configs unter `swag/`:
+
+| Datei | URL |
+| --- | --- |
+| `logbookviso.subdomain.conf` | `https://logbookviso.deinedomain.tld` |
+| `logbookviso.subfolder.conf` | `https://deinedomain.tld/logbookviso/` |
+
+1. Gewünschte Conf nach SWAG kopieren: `/config/nginx/proxy-confs/`
+2. DNS für Subdomain setzen (bei Subdomain-Variante)
+3. Container und SWAG im gleichen Docker-Netz (`proxy` in `docker-compose.yml`, ggf. anpassen)
+4. SWAG neu starten
+
+```bash
+# Netz anlegen, falls noch nicht vorhanden
+docker network create proxy
+```
+
 ## Funktionen
 
 - Zoom und Verschieben der Karte (Leaflet / OpenStreetMap)

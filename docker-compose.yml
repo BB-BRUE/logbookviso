@@ -1,6 +1,7 @@
 services:
   logbookviso:
     build: .
+    container_name: logbookviso
     ports:
       - "5000:5000"
     environment:
@@ -8,4 +9,12 @@ services:
     volumes:
       # SQLite-Datei vom Host einbinden (nur lesen)
       - ./logbook.sqlite:/data/logbook.sqlite:ro
+    networks:
+      - proxy
     restart: unless-stopped
+
+networks:
+  proxy:
+    # Externes Netz, das auch SWAG nutzt (ggf. Namen anpassen)
+    external: true
+    name: proxy
