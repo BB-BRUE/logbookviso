@@ -11,7 +11,7 @@ from pathlib import Path
 from flask import Flask, jsonify, send_from_directory
 
 ROOT = Path(__file__).resolve().parent
-DB_PATH = Path(os.environ.get("LOGBOOK_DB", str(ROOT / "logbook.sqlite")))
+DB_PATH = Path(os.environ.get("LOGBOOK_DB", str(ROOT / "data/logbook.sqlite")))
 STATIC = ROOT / "static"
 
 STATUS_LABELS = {
