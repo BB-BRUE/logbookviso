@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, send_from_directory
 
 ROOT = Path(__file__).resolve().parent
-DB_PATH = ROOT / "logbook.sqlite"
+DB_PATH = Path(os.environ.get("LOGBOOK_DB", str(ROOT / "logbook.sqlite")))
 STATIC = ROOT / "static"
 
 STATUS_LABELS = {
@@ -209,5 +210,7 @@ def api_status_legend():
 if __name__ == "__main__":
     if not DB_PATH.exists():
         raise SystemExit(f"Datenbank nicht gefunden: {DB_PATH}")
-    print(f"Logbook Map -> http://127.0.0.1:5000  (DB: {DB_PATH.name})")
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "5000"))
+    print(f"Logbook Map -> http://{host}:{port}  (DB: {DB_PATH})")
+    app.run(host=host, port=port, debug=os.environ.get("FLASK_DEBUG") == "1")
