@@ -1,8 +1,7 @@
 services:
   logbookviso:
-    name: logbookviso
-    build: .
     container_name: logbookviso
+    build: .
     ports:
       - "5000:5000"
     environment:
