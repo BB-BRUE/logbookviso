@@ -25,7 +25,20 @@ app = Flask(__name__, static_folder=str(STATIC), static_url_path="")
 
 
 def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    """Open SQLite read-only (works with Docker :ro volume mounts)."""
+    path = DB_PATH.expanduser()
+    if not path.is_file():
+        hint = (
+            "Pfad ist ein Verzeichnis (Docker hat oft einen Ordner angelegt, "
+            "wenn die Host-Datei fehlte)."
+            if path.is_dir()
+            else "Datei fehlt – Volume-Mount prüfen."
+        )
+        raise FileNotFoundError(f"Datenbank nicht nutzbar: {path} – {hint}")
+
+    # mode=ro: SQLite braucht keinen Schreibzugriff auf Datei/Verzeichnis
+    uri = f"file:{path.resolve().as_posix()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
     return conn
 

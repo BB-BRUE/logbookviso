@@ -7,7 +7,7 @@ services:
     environment:
       LOGBOOK_DB: /data/logbook.sqlite
     volumes:
-      # SQLite-Datei vom Host einbinden (nur lesen)
+      # Host-Datei muss existieren; :ro braucht Read-only-Open in der App
       - ./logbook.sqlite:/data/logbook.sqlite:ro
     networks:
       - swag_proxy-net
