@@ -10,7 +10,7 @@ services:
       # SQLite-Datei vom Host einbinden (nur lesen)
       - ./logbook.sqlite:/opt/docker/logbookviso/data/logbook.sqlite:ro
     networks:
-      - proxy
+      - swag_proxy-net
     restart: unless-stopped
 
 networks:
