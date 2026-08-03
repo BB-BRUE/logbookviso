@@ -7,8 +7,9 @@ services:
     environment:
       LOGBOOK_DB: /data/logbook.sqlite
     volumes:
-      # Host-Datei muss existieren; :ro braucht Read-only-Open in der App
-      - ./logbook.sqlite:/data/logbook.sqlite:ro
+      # Verzeichnis mounten (zuverlässiger als einzelne Datei).
+      # Host: ./data/logbook.sqlite  ->  Container: /data/logbook.sqlite
+      - ./data:/data:ro
     networks:
       - swag_proxy-net
     restart: unless-stopped

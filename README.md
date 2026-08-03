@@ -25,8 +25,10 @@ Volume-Mapping in `docker-compose.yml`:
 
 ```yaml
 volumes:
-  - ./logbook.sqlite:/data/logbook.sqlite:ro
+  - ./data:/data:ro
 ```
+
+Die Datenbank liegt unter `data/logbook.sqlite` (nicht als einzelne Datei mounten – Docker legt sonst leicht einen Ordner an).
 
 Andere DB-Datei z. B. so:
 
