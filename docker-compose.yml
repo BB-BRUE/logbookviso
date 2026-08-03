@@ -14,7 +14,5 @@ services:
     restart: unless-stopped
 
 networks:
-  proxy:
-    # Externes Netz, das auch SWAG nutzt (ggf. Namen anpassen)
+  swag_proxy-net:
     external: true
-    name: proxy
