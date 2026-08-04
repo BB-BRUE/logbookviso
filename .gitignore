@@ -1,1 +1,7 @@
 /data/logbook.sqlite
+/data/photos.sqlite
+/data/photos/
+/data/photos-cache/
+/data/google-photos.json
+__pycache__/
+

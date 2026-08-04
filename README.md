@@ -25,10 +25,10 @@ Volume-Mapping in `docker-compose.yml`:
 
 ```yaml
 volumes:
-  - ./data:/data:ro
+  - ./data:/data
 ```
 
-Die Datenbank liegt unter `data/logbook.sqlite` (nicht als einzelne Datei mounten – Docker legt sonst leicht einen Ordner an).
+Die Datenbank liegt unter `data/logbook.sqlite`. Uploads: `data/photos/` und `data/photos.sqlite`.
 
 Andere DB-Datei z. B. so:
 
@@ -75,33 +75,25 @@ docker network create proxy
 - Hover-Popup mit Time, COG, LAT, LON, SOG, M/H, LOG, GEO, Freitext und Wetterdaten
 - `recordtype = 1` → größere Punkte (manuelle Einträge)
 - Status-Farben: 0 Segeln, 1 Festgemacht, 2 Motor, 3 Anker
-- **Google Fotos:** öffentliche Teilen-Links pro Törn, Marker mit Galerie (ohne Bilder aus SQLite)
+- **Foto-Upload** pro Törn mit GPS (EXIF oder manuell), Cluster-Marker auf der Karte
 
-### Google Fotos (Teilen-Link)
+### Fotos hochladen
 
-Öffentliche Google-Photos-Alben (`photos.app.goo.gl/…` oder `photos.google.com/share/…`) werden serverseitig eingelesen. **GPS-Koordinaten stehen in Teilen-Links nicht zuverlässig zur Verfügung** – die App setzt die Bilder daher per **Aufnahmezeit** dem nächsten Track-Punkt desselben Törns zu (nur Zeit/Koordinaten aus dem Logbuch, keine `bilddata` aus SQLite). Fotos in der Nähe werden unter **einem Marker** gebündelt (`clusterRadiusMeters`).
+Speicherort (Docker-Volume `./data`):
 
-1. Vorlage kopieren:
+| Pfad | Inhalt |
+| --- | --- |
+| `data/photos/<toern>/` | Bilddateien |
+| `data/photos.sqlite` | Metadaten (Koordinaten, Törn, Dateiname) |
 
-```bash
-cp data/google-photos.json.example data/google-photos.json
-```
+In der Sidebar: Dateien wählen → **Hochladen** (aktuell gewählter Törn).
 
-2. Pro Törn Album-Links eintragen (`toern`-ID wie in der Datenbank):
+Koordinaten:
 
-```json
-{
-  "clusterRadiusMeters": 250,
-  "toerns": {
-    "0": {
-      "albums": ["https://photos.app.goo.gl/DEIN_LINK"]
-    }
-  }
-}
-```
+1. **EXIF-GPS** im Bild (empfohlen), oder
+2. **LAT/LON** im Formular (für alle Dateien des Uploads), oder
+3. **Track-Zeit**: Aufnahmezeit aus EXIF → nächster Track-Punkt desselben Törns
 
-3. Optional: Einzelbilder mit **festen Koordinaten** (`manualPhotos`), wenn kein Zeitstempel passt.
+Marker in der Nähe werden gebündelt (~250 m). Bilder werden nicht in `logbook.sqlite` gespeichert.
 
-4. Container neu starten bzw. Seite neu laden. Auf der Karte: gelbe Marker mit Anzahl → Klick öffnet Galerie.
-
-Cache (Album-Inhalte): standardmäßig `/tmp/photos-cache` im Container (Schreibzugriff, da `./data` read-only gemountet ist).
+Upload-Limit pro Anfrage: **256 MB** (Umgebungsvariable `MAX_UPLOAD_MB`). Hinter SWAG/Nginx ggf. `client_max_body_size` anpassen (siehe `swag/logbookviso.subdomain.conf`).

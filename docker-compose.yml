@@ -6,12 +6,12 @@ services:
       - "5000:5000"
     environment:
       LOGBOOK_DB: /data/logbook.sqlite
-      GOOGLE_PHOTOS_CONFIG: /data/google-photos.json
-      GOOGLE_PHOTOS_CACHE: /tmp/photos-cache
+      PHOTOS_DB: /data/photos.sqlite
+      PHOTOS_DIR: /data/photos
+      MAX_UPLOAD_MB: "256"
     volumes:
-      # Verzeichnis mounten (zuverlässiger als einzelne Datei).
-      # Host: ./data/logbook.sqlite  ->  Container: /data/logbook.sqlite
-      - ./data:/data:ro
+      # Logbuch read-only; Fotos + photos.sqlite brauchen Schreibzugriff
+      - ./data:/data
     networks:
       - swag_proxy-net
     restart: unless-stopped

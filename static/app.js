@@ -16,6 +16,9 @@ const el = {
   mapWrap: document.querySelector(".map-wrap"),
   showPhotos: document.getElementById("showPhotos"),
   photoInfo: document.getElementById("photoInfo"),
+  photoUpload: document.getElementById("photoUpload"),
+  photoFiles: document.getElementById("photoFiles"),
+  photoUploadBtn: document.getElementById("photoUploadBtn"),
 };
 
 let trackLayer = null;
@@ -210,7 +213,8 @@ function drawPhotoClusters(clusters) {
     const marker = L.marker([cluster.lat, cluster.lon], { icon });
     marker.bindPopup(photoPopupHtml(cluster), {
       className: "photo-popup-wrap",
-      maxWidth: 440,
+      maxWidth: 660,
+      minWidth: 300,
     });
     marker.addTo(photoLayer);
   });
@@ -328,6 +332,56 @@ function drawTrack(points) {
   el.count.textContent = `${points.length.toLocaleString("de-DE")} Punkte`;
 }
 
+async function uploadPhotos(toernId) {
+  const files = el.photoFiles?.files;
+  if (!files?.length) {
+    showToast("Bitte Dateien auswählen.");
+    return;
+  }
+  const form = new FormData();
+  form.append("toern", String(toernId));
+  const title = document.getElementById("photoTitle")?.value?.trim();
+  const lat = document.getElementById("photoLat")?.value?.trim();
+  const lon = document.getElementById("photoLon")?.value?.trim();
+  if (title) form.append("title", title);
+  if (lat && lon) {
+    form.append("lat", lat);
+    form.append("lon", lon);
+  }
+  for (const file of files) {
+    form.append("photos", file);
+  }
+
+  el.photoUploadBtn.disabled = true;
+  try {
+    const res = await fetch("/api/photos/upload", { method: "POST", body: form });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch {
+      if (res.status === 413) {
+        throw new Error("Upload zu groß – weniger Dateien auf einmal wählen.");
+      }
+      throw new Error(`Upload fehlgeschlagen (HTTP ${res.status}).`);
+    }
+    if (!res.ok) {
+      throw new Error(data.error || "Upload fehlgeschlagen.");
+    }
+    if (data.errors?.length) {
+      showToast(`${data.count} gespeichert, ${data.errors.length} Fehler`);
+    } else {
+      showToast(`${data.count} Foto(s) hochgeladen.`);
+    }
+    el.photoUpload?.reset();
+    await loadPhotos(toernId);
+    fitMapBounds();
+  } catch (err) {
+    showToast(err.message || "Upload fehlgeschlagen");
+  } finally {
+    el.photoUploadBtn.disabled = false;
+  }
+}
+
 async function loadPhotos(toernId) {
   if (!el.showPhotos?.checked) {
     clearPhotos();
@@ -411,6 +465,16 @@ async function main() {
     if (!Number.isFinite(id)) return;
     await loadPhotos(id);
     fitMapBounds();
+  });
+
+  el.photoUpload?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = Number(el.select.value);
+    if (!Number.isFinite(id)) {
+      showToast("Bitte zuerst einen Törn wählen.");
+      return;
+    }
+    await uploadPhotos(id);
   });
 
   try {

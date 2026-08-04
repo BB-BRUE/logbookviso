@@ -35,9 +35,33 @@
 
       <label class="field field-check">
         <input type="checkbox" id="showPhotos" checked />
-        <span>Google-Fotos auf der Karte</span>
+        <span>Fotos auf der Karte</span>
       </label>
       <p id="photoInfo" class="hint photo-info">Fotos: —</p>
+
+      <form id="photoUpload" class="upload-form">
+        <h2>Fotos hochladen</h2>
+        <p class="hint upload-hint">GPS aus EXIF oder Koordinaten unten. Ohne beides: Zuordnung per Aufnahmezeit zum Track.</p>
+        <label class="field">
+          <span>Dateien</span>
+          <input type="file" id="photoFiles" name="photos" accept="image/*" multiple required />
+        </label>
+        <label class="field">
+          <span>Titel (optional)</span>
+          <input type="text" id="photoTitle" name="title" placeholder="z. B. Ankerplatz Punat" />
+        </label>
+        <div class="coord-row">
+          <label class="field">
+            <span>LAT (optional)</span>
+            <input type="text" id="photoLat" name="lat" inputmode="decimal" placeholder="45.002" />
+          </label>
+          <label class="field">
+            <span>LON (optional)</span>
+            <input type="text" id="photoLon" name="lon" inputmode="decimal" placeholder="14.607" />
+          </label>
+        </div>
+        <button type="submit" class="btn btn-primary" id="photoUploadBtn">Hochladen</button>
+      </form>
 
       <footer class="sidebar-foot">
         <span id="pointCount">—</span>

@@ -212,6 +212,50 @@ body {
   margin-top: 0.35rem;
 }
 
+.upload-form {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.upload-form h2 {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--mist);
+}
+
+.upload-hint {
+  margin: 0 0 0.75rem;
+}
+
+.coord-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.field input[type="text"],
+.field input[type="file"] {
+  font: inherit;
+  color: var(--foam);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  width: 100%;
+}
+
+.btn-primary {
+  width: 100%;
+  margin-top: 0.35rem;
+  background: rgba(47, 158, 138, 0.22);
+  border-color: rgba(47, 158, 138, 0.45);
+  cursor: pointer;
+}
+
 .photo-marker {
   background: #f4c542;
   border: 2px solid #fff;
@@ -231,24 +275,54 @@ body {
   color: var(--foam);
   border-radius: 12px;
   border: 1px solid rgba(232, 242, 244, 0.14);
+  max-height: min(88vh, 560px);
 }
 
+.photo-popup-wrap .leaflet-popup-content {
+  margin: 0;
+  width: min(92vw, 640px) !important;
+  max-width: min(92vw, 640px) !important;
+}
+
+.photo-popup-wrap .photo-popup,
 .leaflet-popup-content.photo-popup {
-  margin: 0.75rem 0.85rem;
-  min-width: 220px;
-  max-width: min(92vw, 420px);
+  margin: 0.75rem 0.85rem 0.85rem;
+  min-width: 300px;
+  width: min(92vw, 640px);
+  max-width: min(92vw, 640px);
+  box-sizing: border-box;
 }
 
 .photo-popup h4 {
   margin: 0 0 0.55rem;
   font-family: var(--font-display);
   font-size: 1rem;
+  flex-shrink: 0;
 }
 
 .photo-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
-  gap: 0.45rem;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: min(52vh, 420px);
+  padding-right: 0.35rem;
+  padding-bottom: 0.15rem;
+  scrollbar-gutter: stable;
+}
+
+.photo-grid::-webkit-scrollbar {
+  width: 8px;
+}
+
+.photo-grid::-webkit-scrollbar-thumb {
+  background: rgba(232, 242, 244, 0.22);
+  border-radius: 4px;
+}
+
+.photo-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(232, 242, 244, 0.35);
 }
 
 .photo-grid a {

@@ -8,15 +8,22 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 
-from google_photos import clusters_to_json, load_config, load_photos_for_toern
+from photos_store import (
+    clusters_to_json,
+    cluster_photos,
+    get_photo,
+    list_photos,
+    save_upload,
+)
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("LOGBOOK_DB", str(ROOT / "data/logbook.sqlite")))
-PHOTOS_CONFIG = Path(os.environ.get("GOOGLE_PHOTOS_CONFIG", str(ROOT / "data/google-photos.json")))
-PHOTOS_CACHE = Path(os.environ.get("GOOGLE_PHOTOS_CACHE", str(ROOT / "data/photos-cache")))
+PHOTOS_DB = Path(os.environ.get("PHOTOS_DB", str(ROOT / "data/photos.sqlite")))
+PHOTOS_DIR = Path(os.environ.get("PHOTOS_DIR", str(ROOT / "data/photos")))
 STATIC = ROOT / "static"
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "256"))
 
 STATUS_LABELS = {
     0: "Segeln",
@@ -26,10 +33,26 @@ STATUS_LABELS = {
 }
 
 app = Flask(__name__, static_folder=str(STATIC), static_url_path="")
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+
+
+@app.errorhandler(413)
+def request_entity_too_large(_exc):
+    return (
+        jsonify(
+            {
+                "error": (
+                    f"Upload zu groß (max. {MAX_UPLOAD_MB} MB pro Anfrage). "
+                    "Weniger Dateien auf einmal oder MAX_UPLOAD_MB erhöhen."
+                )
+            }
+        ),
+        413,
+    )
 
 
 def get_db() -> sqlite3.Connection:
-    """Open SQLite read-only (works with Docker :ro volume mounts)."""
+    """Open SQLite read-only (works with Docker :ro volume mounts for logbook)."""
     path = DB_PATH.expanduser()
     if not path.is_file():
         hint = (
@@ -40,7 +63,6 @@ def get_db() -> sqlite3.Connection:
         )
         raise FileNotFoundError(f"Datenbank nicht nutzbar: {path} – {hint}")
 
-    # mode=ro: SQLite braucht keinen Schreibzugriff auf Datei/Verzeichnis
     uri = f"file:{path.resolve().as_posix()}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
@@ -78,11 +100,31 @@ def clean_num(value, digits: int | None = None):
         n = float(value)
     except (TypeError, ValueError):
         return None
-    if n < 0 and n > -1.5:  # sentinel values like -1
+    if n < 0 and n > -1.5:
         return None
     if digits is not None:
         return round(n, digits)
     return n
+
+
+def track_timeline(conn: sqlite3.Connection, toern_id: int) -> list[tuple[int, float, float]]:
+    rows = conn.execute(
+        """
+        SELECT zeitstempel, cl_lat, cl_lon
+        FROM Logrecord
+        WHERE toern = ?
+          AND (geloescht IS NULL OR geloescht = 0)
+          AND zeitstempel IS NOT NULL
+          AND zeitstempel < 7000000000000
+          AND cl_lat IS NOT NULL
+          AND cl_lon IS NOT NULL
+          AND ABS(cl_lat) > 0.01
+          AND ABS(cl_lon) > 0.01
+        ORDER BY zeitstempel ASC
+        """,
+        (toern_id,),
+    ).fetchall()
+    return [(int(r["zeitstempel"]), float(r["cl_lat"]), float(r["cl_lon"])) for r in rows]
 
 
 @app.get("/")
@@ -214,47 +256,108 @@ def api_track(toern_id: int):
     return jsonify({"toernId": toern_id, "count": len(points), "points": points})
 
 
-def track_timeline(conn: sqlite3.Connection, toern_id: int) -> list[tuple[int, float, float]]:
-    rows = conn.execute(
-        """
-        SELECT zeitstempel, cl_lat, cl_lon
-        FROM Logrecord
-        WHERE toern = ?
-          AND (geloescht IS NULL OR geloescht = 0)
-          AND zeitstempel IS NOT NULL
-          AND zeitstempel < 7000000000000
-          AND cl_lat IS NOT NULL
-          AND cl_lon IS NOT NULL
-          AND ABS(cl_lat) > 0.01
-          AND ABS(cl_lon) > 0.01
-        ORDER BY zeitstempel ASC
-        """,
-        (toern_id,),
-    ).fetchall()
-    return [(int(r["zeitstempel"]), float(r["cl_lat"]), float(r["cl_lon"])) for r in rows]
-
-
 @app.get("/api/photos/<int:toern_id>")
 def api_photos(toern_id: int):
-    config = load_config(PHOTOS_CONFIG)
-    with get_db() as conn:
-        track = track_timeline(conn, toern_id)
-
-    try:
-        clusters, warnings, meta = load_photos_for_toern(
-            toern_id, config, track, PHOTOS_CACHE
-        )
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": str(exc), "toernId": toern_id}), 502
-
+    photos = list_photos(PHOTOS_DB, toern_id)
+    clusters = cluster_photos(photos)
     return jsonify(
         {
             "toernId": toern_id,
-            "meta": meta,
-            "warnings": warnings,
+            "meta": {
+                "photoCount": len(photos),
+                "clusterCount": len(clusters),
+            },
+            "warnings": [],
             "clusters": clusters_to_json(clusters),
         }
     )
+
+
+@app.post("/api/photos/upload")
+def api_photos_upload():
+    toern_raw = request.form.get("toern")
+    if toern_raw is None:
+        return jsonify({"error": "Feld 'toern' fehlt."}), 400
+    try:
+        toern = int(toern_raw)
+    except ValueError:
+        return jsonify({"error": "Ungültige Törn-ID."}), 400
+
+    lat = lon = None
+    if request.form.get("lat") not in (None, ""):
+        try:
+            lat = float(request.form.get("lat"))
+            lon = float(request.form.get("lon"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Ungültige Koordinaten."}), 400
+
+    title = (request.form.get("title") or "").strip()
+    files = request.files.getlist("photos")
+    if not files:
+        single = request.files.get("photo")
+        files = [single] if single and single.filename else []
+
+    if not files:
+        return jsonify({"error": "Keine Dateien ausgewählt."}), 400
+
+    with get_db() as conn:
+        track = track_timeline(conn, toern)
+
+    saved = []
+    errors = []
+    for f in files:
+        if not f.filename:
+            continue
+        data = f.read()
+        if not data:
+            errors.append(f"{f.filename}: leer")
+            continue
+        photo, err = save_upload(
+            PHOTOS_DB,
+            PHOTOS_DIR,
+            toern,
+            data,
+            f.filename,
+            lat,
+            lon,
+            title,
+            track,
+        )
+        if err:
+            errors.append(f"{f.filename}: {err}")
+        elif photo:
+            saved.append({"id": photo.id, "filename": photo.original_name})
+
+    if not saved and errors:
+        return jsonify({"error": errors[0], "errors": errors}), 400
+
+    return jsonify({"saved": saved, "errors": errors, "count": len(saved)})
+
+
+@app.get("/api/photos/file/<int:photo_id>")
+def api_photos_file(photo_id: int):
+    photo, path = get_photo(PHOTOS_DB, PHOTOS_DIR, photo_id)
+    if photo is None or path is None:
+        return jsonify({"error": "Foto nicht gefunden."}), 404
+
+    if request.args.get("thumb") == "1":
+        try:
+            from PIL import Image
+            import io
+
+            with Image.open(path) as img:
+                img.thumbnail((320, 320))
+                buf = io.BytesIO()
+                fmt = "JPEG" if path.suffix.lower() in (".jpg", ".jpeg") else "PNG"
+                img.save(buf, format=fmt, quality=85)
+                buf.seek(0)
+                from flask import send_file
+
+                return send_file(buf, mimetype=f"image/{fmt.lower()}")
+        except Exception:
+            pass
+
+    return send_from_directory(path.parent, path.name)
 
 
 @app.get("/api/status-legend")
@@ -268,6 +371,7 @@ def api_status_legend():
 
 
 if __name__ == "__main__":
+    PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
     if not DB_PATH.exists():
         raise SystemExit(f"Datenbank nicht gefunden: {DB_PATH}")
     host = os.environ.get("HOST", "127.0.0.1")
