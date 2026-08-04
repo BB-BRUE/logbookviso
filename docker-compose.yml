@@ -10,7 +10,6 @@ services:
       PHOTOS_DIR: /data/photos
       MAX_UPLOAD_MB: "256"
     volumes:
-      # Logbuch read-only; Fotos + photos.sqlite brauchen Schreibzugriff
       - ./data:/data
     networks:
       - swag_proxy-net
