@@ -16,7 +16,11 @@
         <p class="brand-mark">Fotos verwalten</p>
         <p class="brand-sub">Upload, Titel & Koordinaten bearbeiten, löschen</p>
       </div>
-      <a href="/" class="btn" id="backToMap">← Zur Karte</a>
+      <div class="header-actions">
+        <a href="/" class="btn" id="backToMap">← Zur Karte</a>
+        <a href="/admin" id="adminLink" class="btn" hidden>Admin</a>
+        <button type="button" class="btn" id="logoutBtn">Abmelden</button>
+      </div>
     </header>
 
     <section class="manage-toolbar">
@@ -75,6 +79,7 @@
 
     <div id="toast" class="toast manage-toast" hidden></div>
   </div>
+  <script src="/auth.js"></script>
   <script src="/photos-manage.js"></script>
 </body>
 </html>

@@ -9,6 +9,8 @@ services:
       PHOTOS_DB: /data/photos.sqlite
       PHOTOS_DIR: /data/photos
       MAX_UPLOAD_MB: "256"
+      # SECRET_KEY: set-a-long-random-string
+      # INIT_ADMIN_USER / INIT_ADMIN_PASSWORD: nur beim ersten Start (leere User-Tabelle)
     volumes:
       - ./data:/data
     networks:

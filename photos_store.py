@@ -24,6 +24,7 @@ class StoredPhoto:
     lat: float
     lon: float
     taken_at_ms: int | None
+    uploaded_by_user_id: int | None = None
 
 
 @dataclass
@@ -43,6 +44,9 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
+from users_store import init_app_db as _init_users_schema
+
+
 def init_photos_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
@@ -57,13 +61,15 @@ def init_photos_db(db_path: Path) -> None:
                 lat REAL NOT NULL,
                 lon REAL NOT NULL,
                 taken_at_ms INTEGER,
-                created_at_ms INTEGER NOT NULL
+                created_at_ms INTEGER NOT NULL,
+                uploaded_by_user_id INTEGER
             )
             """
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_photos_toern ON photos(toern)"
         )
+    _init_users_schema(db_path)
 
 
 def get_photos_conn(db_path: Path) -> sqlite3.Connection:
@@ -157,6 +163,7 @@ def save_upload(
     lon: float | None,
     title: str = "",
     track: list[tuple[int, float, float]] | None = None,
+    uploaded_by_user_id: int | None = None,
 ) -> tuple[StoredPhoto | None, str | None]:
     ext = Path(original_name).suffix.lower()
     if ext not in ALLOWED_EXT:
@@ -182,40 +189,18 @@ def save_upload(
         return None, "Keine Koordinaten (EXIF/formular) und kein Track-Treffer."
 
     now_ms = int(time.time() * 1000)
-    with get_photos_conn(db_path) as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO photos
-                (toern, filename, original_name, title, lat, lon, taken_at_ms, created_at_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                toern,
-                stored_name,
-                original_name,
-                title,
-                float(use_lat),
-                float(use_lon),
-                taken_ms,
-                now_ms,
-            ),
-        )
-        photo_id = int(cur.lastrowid)
-        conn.commit()
-
-    return (
-        StoredPhoto(
-            id=photo_id,
-            toern=toern,
-            filename=stored_name,
-            original_name=original_name,
-            title=title,
-            lat=float(use_lat),
-            lon=float(use_lon),
-            taken_at_ms=taken_ms,
-        ),
-        None,
+    photo = _insert_photo_row(
+        db_path,
+        toern,
+        stored_name,
+        original_name,
+        title,
+        float(use_lat),
+        float(use_lon),
+        taken_ms,
+        uploaded_by_user_id,
     )
+    return photo, None
 
 
 def _resolve_photo_coords(
@@ -242,16 +227,28 @@ def _insert_photo_row(
     lat: float,
     lon: float,
     taken_at_ms: int | None,
+    uploaded_by_user_id: int | None = None,
 ) -> StoredPhoto:
     now_ms = int(time.time() * 1000)
     with get_photos_conn(db_path) as conn:
         cur = conn.execute(
             """
             INSERT INTO photos
-                (toern, filename, original_name, title, lat, lon, taken_at_ms, created_at_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (toern, filename, original_name, title, lat, lon, taken_at_ms,
+                 created_at_ms, uploaded_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (toern, filename, original_name, title, lat, lon, taken_at_ms, now_ms),
+            (
+                toern,
+                filename,
+                original_name,
+                title,
+                lat,
+                lon,
+                taken_at_ms,
+                now_ms,
+                uploaded_by_user_id,
+            ),
         )
         photo_id = int(cur.lastrowid)
         conn.commit()
@@ -264,6 +261,7 @@ def _insert_photo_row(
         lat=lat,
         lon=lon,
         taken_at_ms=taken_at_ms,
+        uploaded_by_user_id=uploaded_by_user_id,
     )
 
 
@@ -274,6 +272,7 @@ def import_photos_from_folder(
     track: list[tuple[int, float, float]] | None = None,
     *,
     refresh_existing: bool = False,
+    uploaded_by_user_id: int | None = None,
 ) -> tuple[list[StoredPhoto], list[StoredPhoto], list[str], dict[str, Any]]:
     """
     Liest Bilder aus data/photos/<toörn>/ ein.
@@ -356,6 +355,7 @@ def import_photos_from_folder(
             lat,
             lon,
             taken_ms,
+            uploaded_by_user_id,
         )
         imported.append(photo)
 
@@ -380,7 +380,7 @@ def list_photos(db_path: Path, toern: int) -> list[StoredPhoto]:
         rows = conn.execute(
             """
             SELECT id, toern, filename, original_name, title, lat, lon, taken_at_ms,
-                   created_at_ms
+                   created_at_ms, uploaded_by_user_id
             FROM photos
             WHERE toern = ?
             ORDER BY COALESCE(taken_at_ms, created_at_ms), id
@@ -391,6 +391,10 @@ def list_photos(db_path: Path, toern: int) -> list[StoredPhoto]:
 
 
 def _row_to_photo(r: sqlite3.Row) -> StoredPhoto:
+    keys = r.keys()
+    uploaded = None
+    if "uploaded_by_user_id" in keys and r["uploaded_by_user_id"] is not None:
+        uploaded = int(r["uploaded_by_user_id"])
     return StoredPhoto(
         id=int(r["id"]),
         toern=int(r["toern"]),
@@ -400,10 +404,17 @@ def _row_to_photo(r: sqlite3.Row) -> StoredPhoto:
         lat=float(r["lat"]),
         lon=float(r["lon"]),
         taken_at_ms=r["taken_at_ms"],
+        uploaded_by_user_id=uploaded,
     )
 
 
-def photo_manage_dict(p: StoredPhoto, created_at_ms: int | None = None) -> dict[str, Any]:
+def photo_manage_dict(
+    p: StoredPhoto,
+    created_at_ms: int | None = None,
+    *,
+    can_edit: bool = False,
+    uploaded_by_username: str | None = None,
+) -> dict[str, Any]:
     return {
         "id": p.id,
         "toern": p.toern,
@@ -413,28 +424,33 @@ def photo_manage_dict(p: StoredPhoto, created_at_ms: int | None = None) -> dict[
         "lon": p.lon,
         "takenAtMs": p.taken_at_ms,
         "createdAtMs": created_at_ms,
+        "uploadedByUserId": p.uploaded_by_user_id,
+        "uploadedBy": uploaded_by_username,
+        "canEdit": can_edit,
         "thumbUrl": f"/api/photos/file/{p.id}?thumb=1",
         "url": f"/api/photos/file/{p.id}",
     }
 
 
-def list_photos_manage(db_path: Path, toern: int) -> list[dict[str, Any]]:
+def list_photos_manage(db_path: Path, toern: int) -> list[tuple[StoredPhoto, int | None]]:
     with get_photos_conn(db_path) as conn:
         rows = conn.execute(
             """
             SELECT id, toern, filename, original_name, title, lat, lon, taken_at_ms,
-                   created_at_ms
+                   created_at_ms, uploaded_by_user_id
             FROM photos
             WHERE toern = ?
             ORDER BY COALESCE(taken_at_ms, created_at_ms) DESC, id DESC
             """,
             (toern,),
         ).fetchall()
-    out: list[dict[str, Any]] = []
-    for r in rows:
-        p = _row_to_photo(r)
-        out.append(photo_manage_dict(p, r["created_at_ms"]))
-    return out
+    return [(_row_to_photo(r), r["created_at_ms"]) for r in rows]
+
+
+def get_photo_toern(db_path: Path, photo_id: int) -> int | None:
+    with get_photos_conn(db_path) as conn:
+        row = conn.execute("SELECT toern FROM photos WHERE id = ?", (photo_id,)).fetchone()
+        return int(row["toern"]) if row else None
 
 
 def update_photo(
@@ -491,7 +507,8 @@ def get_photo(db_path: Path, photos_dir: Path, photo_id: int) -> tuple[StoredPho
     with get_photos_conn(db_path) as conn:
         row = conn.execute(
             """
-            SELECT id, toern, filename, original_name, title, lat, lon, taken_at_ms
+            SELECT id, toern, filename, original_name, title, lat, lon, taken_at_ms,
+                   uploaded_by_user_id
             FROM photos WHERE id = ?
             """,
             (photo_id,),

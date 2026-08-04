@@ -9,6 +9,8 @@ const el = {
   importBtn: document.getElementById("importFolderBtn"),
   refreshExisting: document.getElementById("refreshExisting"),
   folderHint: document.getElementById("folderToernHint"),
+  adminLink: document.getElementById("adminLink"),
+  logoutBtn: document.getElementById("logoutBtn"),
 };
 
 let toastTimer = null;
@@ -49,7 +51,7 @@ function syncBackLink() {
 }
 
 async function loadToerns() {
-  const res = await fetch("/api/toerns");
+  const res = await apiFetch("/api/toerns");
   if (!res.ok) throw new Error("Törns konnten nicht geladen werden.");
   const toerns = await res.json();
   el.select.innerHTML = "";
@@ -80,41 +82,50 @@ function renderPhotoList(photos) {
   el.count.textContent = `${photos.length} Foto${photos.length === 1 ? "" : "s"}`;
   el.list.innerHTML = photos
     .map(
-      (p) => `
-    <article class="photo-manage-card" data-id="${p.id}">
+      (p) => {
+        const ro = !p.canEdit;
+        const ownerHint = p.uploadedBy
+          ? `Hochgeladen von ${escapeHtml(p.uploadedBy)}`
+          : p.uploadedByUserId == null
+            ? "Legacy-Foto (nur Admin bearbeitbar)"
+            : "";
+        return `
+    <article class="photo-manage-card${ro ? " photo-manage-readonly" : ""}" data-id="${p.id}">
       <a class="photo-manage-thumb" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">
         <img src="${escapeHtml(p.thumbUrl)}" alt="" loading="lazy" />
       </a>
       <div class="photo-manage-fields">
         <p class="photo-manage-meta">${escapeHtml(p.originalName || "")}</p>
+        ${ownerHint ? `<p class="hint">${ownerHint}</p>` : ""}
         <label class="field">
           <span>Titel</span>
-          <input type="text" class="inp-title" value="${escapeHtml(p.title || "")}" placeholder="Titel" />
+          <input type="text" class="inp-title" value="${escapeHtml(p.title || "")}" placeholder="Titel" ${ro ? "disabled" : ""} />
         </label>
         <div class="coord-row">
           <label class="field">
             <span>LAT</span>
-            <input type="text" class="inp-lat" value="${p.lat}" inputmode="decimal" />
+            <input type="text" class="inp-lat" value="${p.lat}" inputmode="decimal" ${ro ? "disabled" : ""} />
           </label>
           <label class="field">
             <span>LON</span>
-            <input type="text" class="inp-lon" value="${p.lon}" inputmode="decimal" />
+            <input type="text" class="inp-lon" value="${p.lon}" inputmode="decimal" ${ro ? "disabled" : ""} />
           </label>
         </div>
         <p class="hint photo-manage-time">Aufnahme: ${escapeHtml(fmtTime(p.takenAtMs))}</p>
         <div class="photo-manage-actions">
-          <button type="button" class="btn btn-save">Speichern</button>
-          <button type="button" class="btn btn-danger btn-delete">Löschen</button>
+          <button type="button" class="btn btn-save" ${ro ? "disabled" : ""}>Speichern</button>
+          <button type="button" class="btn btn-danger btn-delete" ${ro ? "disabled" : ""}>Löschen</button>
         </div>
       </div>
-    </article>`
+    </article>`;
+      }
     )
     .join("");
 }
 
 async function loadPhotos(toernId) {
   el.list.innerHTML = '<p class="hint">Lade Fotos…</p>';
-  const res = await fetch(`/api/photos/list/${toernId}`);
+  const res = await apiFetch(`/api/photos/list/${toernId}`);
   if (!res.ok) throw new Error("Fotos konnten nicht geladen werden.");
   const data = await res.json();
   renderPhotoList(data.photos || []);
@@ -126,7 +137,7 @@ async function savePhoto(card) {
   const lat = card.querySelector(".inp-lat")?.value?.trim();
   const lon = card.querySelector(".inp-lon")?.value?.trim();
 
-  const res = await fetch(`/api/photos/item/${id}`, {
+  const res = await apiFetch(`/api/photos/item/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, lat, lon }),
@@ -141,7 +152,7 @@ async function deletePhoto(card) {
   const title = card.querySelector(".inp-title")?.value || `#${id}`;
   if (!window.confirm(`Foto „${title}“ wirklich löschen?`)) return;
 
-  const res = await fetch(`/api/photos/item/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`/api/photos/item/${id}`, { method: "DELETE" });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Löschen fehlgeschlagen.");
   card.remove();
@@ -156,7 +167,7 @@ async function deletePhoto(card) {
 async function importFromFolder(toernId) {
   el.importBtn.disabled = true;
   try {
-    const res = await fetch(`/api/photos/import/${toernId}`, {
+    const res = await apiFetch(`/api/photos/import/${toernId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -204,7 +215,7 @@ async function uploadPhotos(toernId) {
 
   el.uploadBtn.disabled = true;
   try {
-    const res = await fetch("/api/photos/upload", { method: "POST", body: form });
+    const res = await apiFetch("/api/photos/upload", { method: "POST", body: form });
     let data = {};
     try {
       data = await res.json();
@@ -275,6 +286,13 @@ el.importBtn?.addEventListener("click", async () => {
 });
 
 async function main() {
+  try {
+    const me = await loadCurrentUser();
+    if (me?.isAdmin && el.adminLink) el.adminLink.hidden = false;
+    el.logoutBtn?.addEventListener("click", () => logout());
+  } catch {
+    return;
+  }
   try {
     await loadToerns();
     const id = selectedToernId();

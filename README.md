@@ -28,7 +28,23 @@ volumes:
   - ./data:/data
 ```
 
-Die Datenbank liegt unter `data/logbook.sqlite`. Uploads: `data/photos/` und `data/photos.sqlite`.
+Die Datenbank liegt unter `data/logbook.sqlite`. Uploads: `data/photos/` und `data/photos.sqlite` (Fotos **und** Benutzer).
+
+## Anmeldung & Benutzer
+
+Alle Seiten außer `/login` erfordern eine Anmeldung. Beim **ersten Start** (leere Benutzertabelle in `photos.sqlite`) wird ein Admin angelegt:
+
+| Umgebungsvariable | Standard |
+| --- | --- |
+| `INIT_ADMIN_USER` | `admin` |
+| `INIT_ADMIN_PASSWORD` | `admin` |
+| `SECRET_KEY` | `dev-change-me-in-production` (Session-Cookies; in Produktion setzen!) |
+
+Nach dem Login: **Admin** unter `/admin` – Benutzer anlegen, Passwörter setzen, Törns zuordnen.
+
+- **User** sehen nur zugeordnete Törns (Karte, Track, Fotos).
+- **Foto-Bearbeitung/Löschen:** Uploader oder Admin; ältere Fotos ohne Uploader nur Admin.
+- Kein „Passwort vergessen“ – Passwortänderung nur durch Admin (oder neues Passwort beim Bearbeiten des Users).
 
 Andere DB-Datei z. B. so:
 

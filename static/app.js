@@ -17,6 +17,10 @@ const el = {
   showPhotos: document.getElementById("showPhotos"),
   photoInfo: document.getElementById("photoInfo"),
   managePhotosLink: document.getElementById("managePhotosLink"),
+  userBar: document.getElementById("userBar"),
+  userName: document.getElementById("userName"),
+  adminLink: document.getElementById("adminLink"),
+  logoutBtn: document.getElementById("logoutBtn"),
 };
 
 let trackLayer = null;
@@ -418,7 +422,7 @@ async function loadPhotos(toernId) {
     return;
   }
   try {
-    const res = await fetch(`/api/photos/${toernId}`);
+    const res = await apiFetch(`/api/photos/${toernId}`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || "Fotos konnten nicht geladen werden.");
@@ -437,7 +441,7 @@ async function loadPhotos(toernId) {
 }
 
 async function loadToerns() {
-  const res = await fetch("/api/toerns");
+  const res = await apiFetch("/api/toerns");
   if (!res.ok) throw new Error("Törns konnten nicht geladen werden.");
   const toerns = await res.json();
 
@@ -477,7 +481,7 @@ async function loadToerns() {
 
 async function loadTrack(toernId, toerns) {
   el.count.textContent = "Lade…";
-  const res = await fetch(`/api/track/${toernId}`);
+  const res = await apiFetch(`/api/track/${toernId}`);
   if (!res.ok) throw new Error("Track konnte nicht geladen werden.");
   const data = await res.json();
   const toern = toerns.find((t) => t.id === Number(toernId));
@@ -497,6 +501,18 @@ async function main() {
     await loadPhotos(id);
     fitMapBounds();
   });
+
+  try {
+    const me = await loadCurrentUser();
+    if (me) {
+      el.userBar.hidden = false;
+      el.userName.textContent = me.username;
+      if (me.isAdmin && el.adminLink) el.adminLink.hidden = false;
+    }
+    el.logoutBtn?.addEventListener("click", () => logout());
+  } catch {
+    return;
+  }
 
   try {
     const toerns = await loadToerns();

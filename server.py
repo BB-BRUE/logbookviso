@@ -8,8 +8,17 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, redirect, request, send_from_directory, session
 
+from auth_helpers import (
+    current_user,
+    login_user,
+    logout_user,
+    require_admin_api,
+    require_login_api,
+    require_photo_edit,
+    require_toern_access,
+)
 from photos_store import (
     clusters_to_json,
     cluster_photos,
@@ -22,13 +31,29 @@ from photos_store import (
     save_upload,
     update_photo,
 )
+from users_store import (
+    ROLE_ADMIN,
+    authenticate,
+    can_edit_photo,
+    create_user,
+    delete_user,
+    ensure_bootstrap_admin,
+    list_users,
+    update_user,
+    user_to_public_dict,
+    username_for_id,
+)
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("LOGBOOK_DB", str(ROOT / "data/logbook.sqlite")))
+# App-DB: Fotos + Benutzer (historischer Name: PHOTOS_DB)
 PHOTOS_DB = Path(os.environ.get("PHOTOS_DB", str(ROOT / "data/photos.sqlite")))
 PHOTOS_DIR = Path(os.environ.get("PHOTOS_DIR", str(ROOT / "data/photos")))
 STATIC = ROOT / "static"
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "256"))
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-change-me-in-production")
+INIT_ADMIN_USER = os.environ.get("INIT_ADMIN_USER", "admin")
+INIT_ADMIN_PASSWORD = os.environ.get("INIT_ADMIN_PASSWORD", "admin")
 
 STATUS_LABELS = {
     0: "Segeln",
@@ -39,6 +64,11 @@ STATUS_LABELS = {
 
 app = Flask(__name__, static_folder=str(STATIC), static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+app.config["SECRET_KEY"] = SECRET_KEY
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+ensure_bootstrap_admin(PHOTOS_DB, INIT_ADMIN_USER, INIT_ADMIN_PASSWORD)
 
 
 @app.errorhandler(413)
@@ -132,18 +162,66 @@ def track_timeline(conn: sqlite3.Connection, toern_id: int) -> list[tuple[int, f
     return [(int(r["zeitstempel"]), float(r["cl_lat"]), float(r["cl_lon"])) for r in rows]
 
 
+@app.get("/login")
+def login_page():
+    if current_user(PHOTOS_DB):
+        return redirect("/")
+    return send_from_directory(STATIC, "login.html")
+
+
+@app.get("/admin")
+def admin_page():
+    user = current_user(PHOTOS_DB)
+    if user is None:
+        return redirect("/login?next=/admin")
+    if user.role != ROLE_ADMIN:
+        return redirect("/")
+    return send_from_directory(STATIC, "admin.html")
+
+
 @app.get("/")
 def index():
+    if current_user(PHOTOS_DB) is None:
+        return redirect("/login")
     return send_from_directory(STATIC, "index.html")
 
 
 @app.get("/photos")
 def photos_manage_page():
+    if current_user(PHOTOS_DB) is None:
+        return redirect("/login?next=/photos")
     return send_from_directory(STATIC, "photos-manage.html")
 
 
+@app.post("/api/auth/login")
+def api_auth_login():
+    body = request.get_json(silent=True) or {}
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+    user = authenticate(PHOTOS_DB, username, password)
+    if user is None:
+        return jsonify({"error": "Benutzername oder Passwort ungültig."}), 401
+    login_user(user)
+    return jsonify(user_to_public_dict(user))
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout():
+    logout_user()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/auth/me")
+def api_auth_me():
+    user = current_user(PHOTOS_DB)
+    if user is None:
+        return jsonify({"error": "Nicht angemeldet."}), 401
+    return jsonify(user_to_public_dict(user))
+
+
 @app.get("/api/toerns")
-def api_toerns():
+@require_login_api(PHOTOS_DB)
+def api_toerns(user):
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -186,6 +264,9 @@ def api_toerns():
 
     result = []
     for r in rows:
+        tid = r["id"]
+        if user.role != ROLE_ADMIN and tid not in user.toern_ids:
+            continue
         result.append(
             {
                 "id": r["id"],
@@ -202,7 +283,11 @@ def api_toerns():
 
 
 @app.get("/api/track/<int:toern_id>")
-def api_track(toern_id: int):
+@require_login_api(PHOTOS_DB)
+def api_track(toern_id: int, user):
+    denied = require_toern_access(PHOTOS_DB, toern_id, user)
+    if denied:
+        return denied
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -267,7 +352,11 @@ def api_track(toern_id: int):
 
 
 @app.get("/api/photos/<int:toern_id>")
-def api_photos(toern_id: int):
+@require_login_api(PHOTOS_DB)
+def api_photos(toern_id: int, user):
+    denied = require_toern_access(PHOTOS_DB, toern_id, user)
+    if denied:
+        return denied
     photos = list_photos(PHOTOS_DB, toern_id)
     clusters = cluster_photos(photos)
     return jsonify(
@@ -284,7 +373,8 @@ def api_photos(toern_id: int):
 
 
 @app.post("/api/photos/upload")
-def api_photos_upload():
+@require_login_api(PHOTOS_DB)
+def api_photos_upload(user):
     toern_raw = request.form.get("toern")
     if toern_raw is None:
         return jsonify({"error": "Feld 'toern' fehlt."}), 400
@@ -292,6 +382,10 @@ def api_photos_upload():
         toern = int(toern_raw)
     except ValueError:
         return jsonify({"error": "Ungültige Törn-ID."}), 400
+
+    denied = require_toern_access(PHOTOS_DB, toern, user)
+    if denied:
+        return denied
 
     lat = lon = None
     if request.form.get("lat") not in (None, ""):
@@ -332,6 +426,7 @@ def api_photos_upload():
             lon,
             title,
             track,
+            uploaded_by_user_id=user.id,
         )
         if err:
             errors.append(f"{f.filename}: {err}")
@@ -345,13 +440,33 @@ def api_photos_upload():
 
 
 @app.get("/api/photos/list/<int:toern_id>")
-def api_photos_list(toern_id: int):
-    items = list_photos_manage(PHOTOS_DB, toern_id)
+@require_login_api(PHOTOS_DB)
+def api_photos_list(toern_id: int, user):
+    denied = require_toern_access(PHOTOS_DB, toern_id, user)
+    if denied:
+        return denied
+    rows = list_photos_manage(PHOTOS_DB, toern_id)
+    items = []
+    for p, created_ms in rows:
+        can_edit = can_edit_photo(PHOTOS_DB, user, p.id)
+        uname = username_for_id(PHOTOS_DB, p.uploaded_by_user_id)
+        items.append(
+            photo_manage_dict(
+                p,
+                created_ms,
+                can_edit=can_edit,
+                uploaded_by_username=uname,
+            )
+        )
     return jsonify({"toernId": toern_id, "count": len(items), "photos": items})
 
 
 @app.post("/api/photos/import/<int:toern_id>")
-def api_photos_import(toern_id: int):
+@require_login_api(PHOTOS_DB)
+def api_photos_import(toern_id: int, user):
+    denied = require_toern_access(PHOTOS_DB, toern_id, user)
+    if denied:
+        return denied
     body = request.get_json(silent=True) or {}
     refresh = bool(body.get("refreshExisting"))
 
@@ -364,6 +479,7 @@ def api_photos_import(toern_id: int):
         toern_id,
         track,
         refresh_existing=refresh,
+        uploaded_by_user_id=user.id,
     )
 
     return jsonify(
@@ -378,7 +494,11 @@ def api_photos_import(toern_id: int):
 
 
 @app.patch("/api/photos/item/<int:photo_id>")
-def api_photos_update(photo_id: int):
+@require_login_api(PHOTOS_DB)
+def api_photos_update(photo_id: int, user):
+    denied = require_photo_edit(PHOTOS_DB, photo_id, user)
+    if denied:
+        return denied
     body = request.get_json(silent=True) or {}
     title = body.get("title")
     lat = body.get("lat")
@@ -418,21 +538,38 @@ def api_photos_update(photo_id: int):
     finally:
         conn.close()
 
-    return jsonify(photo_manage_dict(photo, created_at_ms))
+    return jsonify(
+        photo_manage_dict(
+            photo,
+            created_at_ms,
+            can_edit=True,
+            uploaded_by_username=username_for_id(
+                PHOTOS_DB, photo.uploaded_by_user_id
+            ),
+        )
+    )
 
 
 @app.delete("/api/photos/item/<int:photo_id>")
-def api_photos_delete(photo_id: int):
+@require_login_api(PHOTOS_DB)
+def api_photos_delete(photo_id: int, user):
+    denied = require_photo_edit(PHOTOS_DB, photo_id, user)
+    if denied:
+        return denied
     if not delete_photo(PHOTOS_DB, PHOTOS_DIR, photo_id):
         return jsonify({"error": "Foto nicht gefunden."}), 404
     return jsonify({"deleted": photo_id})
 
 
 @app.get("/api/photos/file/<int:photo_id>")
-def api_photos_file(photo_id: int):
+@require_login_api(PHOTOS_DB)
+def api_photos_file(photo_id: int, user):
     photo, path = get_photo(PHOTOS_DB, PHOTOS_DIR, photo_id)
     if photo is None or path is None:
         return jsonify({"error": "Foto nicht gefunden."}), 404
+    denied = require_toern_access(PHOTOS_DB, photo.toern, user)
+    if denied:
+        return denied
 
     if request.args.get("thumb") == "1":
         try:
@@ -455,13 +592,73 @@ def api_photos_file(photo_id: int):
 
 
 @app.get("/api/status-legend")
-def api_status_legend():
+@require_login_api(PHOTOS_DB)
+def api_status_legend(user):
     return jsonify(
         [
             {"status": k, "label": v}
             for k, v in sorted(STATUS_LABELS.items())
         ]
     )
+
+
+@app.get("/api/admin/users")
+@require_admin_api(PHOTOS_DB)
+def api_admin_users(user):
+    return jsonify({"users": list_users(PHOTOS_DB)})
+
+
+@app.post("/api/admin/users")
+@require_admin_api(PHOTOS_DB)
+def api_admin_users_create(user):
+    body = request.get_json(silent=True) or {}
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+    role = body.get("role") or "user"
+    toern_ids = body.get("toernIds") or []
+    created, err = create_user(
+        PHOTOS_DB,
+        username,
+        password,
+        role=role,
+        toern_ids=[int(x) for x in toern_ids],
+    )
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify(created), 201
+
+
+@app.patch("/api/admin/users/<int:user_id>")
+@require_admin_api(PHOTOS_DB)
+def api_admin_users_update(user_id: int, user):
+    body = request.get_json(silent=True) or {}
+    password = body.get("password")
+    role = body.get("role")
+    toern_ids = body.get("toernIds")
+    if toern_ids is not None:
+        toern_ids = [int(x) for x in toern_ids]
+    updated, err = update_user(
+        PHOTOS_DB,
+        user_id,
+        password=password if password else None,
+        role=role,
+        toern_ids=toern_ids,
+    )
+    if err:
+        return jsonify({"error": err}), 400
+    if updated is None:
+        return jsonify({"error": "Benutzer nicht gefunden."}), 404
+    return jsonify(updated)
+
+
+@app.delete("/api/admin/users/<int:user_id>")
+@require_admin_api(PHOTOS_DB)
+def api_admin_users_delete(user_id: int, user):
+    if user_id == user.id:
+        return jsonify({"error": "Eigenes Konto nicht löschbar."}), 400
+    if not delete_user(PHOTOS_DB, user_id):
+        return jsonify({"error": "Benutzer nicht gefunden."}), 404
+    return jsonify({"deleted": user_id})
 
 
 if __name__ == "__main__":

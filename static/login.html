@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Anmelden – Logbook Viso</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="manage-body login-body">
+  <div class="login-card panel">
+    <p class="brand-mark">Logbook Viso</p>
+    <p class="brand-sub">Anmeldung</p>
+    <form id="loginForm" class="login-form">
+      <label class="field">
+        <span>Benutzer</span>
+        <input type="text" id="username" name="username" autocomplete="username" required />
+      </label>
+      <label class="field">
+        <span>Passwort</span>
+        <input type="password" id="password" name="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit" class="btn btn-primary">Anmelden</button>
+    </form>
+    <p id="loginError" class="login-error" hidden></p>
+  </div>
+  <script src="/login.js"></script>
+</body>
+</html>
