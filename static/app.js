@@ -30,6 +30,9 @@ let photoBounds = null;
 let toastTimer = null;
 let lightboxPhotos = [];
 let lightboxIndex = 0;
+let hoverHideTimer = null;
+let activeTrackMarker = null;
+let activeMarkerStyle = null;
 
 const lightbox = {
   root: null,
@@ -181,6 +184,45 @@ function placeCard(latlng) {
   card.style.top = `${top}px`;
 }
 
+function clearHoverHideTimer() {
+  if (hoverHideTimer) {
+    clearTimeout(hoverHideTimer);
+    hoverHideTimer = null;
+  }
+}
+
+function resetActiveTrackMarker() {
+  if (activeTrackMarker && activeMarkerStyle) {
+    activeTrackMarker.setStyle(activeMarkerStyle);
+    activeTrackMarker = null;
+    activeMarkerStyle = null;
+  }
+}
+
+function hideHoverCard() {
+  clearHoverHideTimer();
+  el.card.hidden = true;
+  resetActiveTrackMarker();
+}
+
+function scheduleHideHoverCard() {
+  clearHoverHideTimer();
+  hoverHideTimer = setTimeout(hideHoverCard, 280);
+}
+
+function highlightTrackMarker(marker, size, major) {
+  resetActiveTrackMarker();
+  activeTrackMarker = marker;
+  activeMarkerStyle = {
+    radius: size / 2,
+    weight: major ? 2.5 : 1.5,
+  };
+  marker.setStyle({
+    radius: size / 2 + 2,
+    weight: major ? 3 : 2,
+  });
+}
+
 function initPhotoLightbox() {
   lightbox.root = document.getElementById("photoLightbox");
   lightbox.main = document.getElementById("photoLightboxMain");
@@ -322,6 +364,7 @@ function clearTrack() {
   trackBounds = null;
   clearPhotos();
   el.card.hidden = true;
+  resetActiveTrackMarker();
   el.fit.disabled = true;
   el.count.textContent = "—";
 }
@@ -380,23 +423,17 @@ function drawTrack(points) {
     });
 
     marker.on("mouseover", (e) => {
+      clearHoverHideTimer();
       el.card.hidden = false;
       el.card.innerHTML = popupHtml(p);
       placeCard(e.latlng);
-      marker.setStyle({
-        radius: (size / 2) + 2,
-        weight: major ? 3 : 2,
-      });
+      highlightTrackMarker(marker, size, major);
     });
 
     marker.on("mousemove", (e) => placeCard(e.latlng));
 
     marker.on("mouseout", () => {
-      el.card.hidden = true;
-      marker.setStyle({
-        radius: size / 2,
-        weight: major ? 2.5 : 1.5,
-      });
+      scheduleHideHoverCard();
     });
 
     marker.addTo(trackLayer);
@@ -494,6 +531,8 @@ async function loadTrack(toernId, toerns) {
 async function main() {
   renderLegend();
   initPhotoLightbox();
+  el.card.addEventListener("mouseenter", () => clearHoverHideTimer());
+  el.card.addEventListener("mouseleave", () => scheduleHideHoverCard());
   el.fit.addEventListener("click", () => fitMapBounds());
   el.showPhotos?.addEventListener("change", async () => {
     const id = Number(el.select.value);
