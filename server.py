@@ -10,8 +10,12 @@ from pathlib import Path
 
 from flask import Flask, jsonify, send_from_directory
 
+from google_photos import clusters_to_json, load_config, load_photos_for_toern
+
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("LOGBOOK_DB", str(ROOT / "data/logbook.sqlite")))
+PHOTOS_CONFIG = Path(os.environ.get("GOOGLE_PHOTOS_CONFIG", str(ROOT / "data/google-photos.json")))
+PHOTOS_CACHE = Path(os.environ.get("GOOGLE_PHOTOS_CACHE", str(ROOT / "data/photos-cache")))
 STATIC = ROOT / "static"
 
 STATUS_LABELS = {
@@ -208,6 +212,49 @@ def api_track(toern_id: int):
         )
 
     return jsonify({"toernId": toern_id, "count": len(points), "points": points})
+
+
+def track_timeline(conn: sqlite3.Connection, toern_id: int) -> list[tuple[int, float, float]]:
+    rows = conn.execute(
+        """
+        SELECT zeitstempel, cl_lat, cl_lon
+        FROM Logrecord
+        WHERE toern = ?
+          AND (geloescht IS NULL OR geloescht = 0)
+          AND zeitstempel IS NOT NULL
+          AND zeitstempel < 7000000000000
+          AND cl_lat IS NOT NULL
+          AND cl_lon IS NOT NULL
+          AND ABS(cl_lat) > 0.01
+          AND ABS(cl_lon) > 0.01
+        ORDER BY zeitstempel ASC
+        """,
+        (toern_id,),
+    ).fetchall()
+    return [(int(r["zeitstempel"]), float(r["cl_lat"]), float(r["cl_lon"])) for r in rows]
+
+
+@app.get("/api/photos/<int:toern_id>")
+def api_photos(toern_id: int):
+    config = load_config(PHOTOS_CONFIG)
+    with get_db() as conn:
+        track = track_timeline(conn, toern_id)
+
+    try:
+        clusters, warnings, meta = load_photos_for_toern(
+            toern_id, config, track, PHOTOS_CACHE
+        )
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc), "toernId": toern_id}), 502
+
+    return jsonify(
+        {
+            "toernId": toern_id,
+            "meta": meta,
+            "warnings": warnings,
+            "clusters": clusters_to_json(clusters),
+        }
+    )
 
 
 @app.get("/api/status-legend")

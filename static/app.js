@@ -14,10 +14,14 @@ const el = {
   card: document.getElementById("hoverCard"),
   toast: document.getElementById("toast"),
   mapWrap: document.querySelector(".map-wrap"),
+  showPhotos: document.getElementById("showPhotos"),
+  photoInfo: document.getElementById("photoInfo"),
 };
 
 let trackLayer = null;
+let photoLayer = null;
 let trackBounds = null;
+let photoBounds = null;
 let toastTimer = null;
 
 const map = L.map("map", {
@@ -160,12 +164,83 @@ function placeCard(latlng) {
   card.style.top = `${top}px`;
 }
 
+function clearPhotos() {
+  if (photoLayer) {
+    map.removeLayer(photoLayer);
+    photoLayer = null;
+  }
+  photoBounds = null;
+  if (el.photoInfo) el.photoInfo.textContent = "Fotos: —";
+}
+
+function photoPopupHtml(cluster) {
+  const items = cluster.photos
+    .map((p) => {
+      const title = p.title ? escapeHtml(p.title) : "Foto";
+      return `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer" title="${title}">
+        <img src="${escapeHtml(p.thumbUrl)}" alt="${title}" loading="lazy" />
+      </a>`;
+    })
+    .join("");
+  return `<div class="photo-popup"><h4>${cluster.count} Foto${cluster.count === 1 ? "" : "s"}</h4><div class="photo-grid">${items}</div></div>`;
+}
+
+function drawPhotoClusters(clusters) {
+  clearPhotos();
+  if (!el.showPhotos?.checked || !clusters.length) {
+    if (el.photoInfo) {
+      el.photoInfo.textContent = clusters.length
+        ? "Fotos: ausgeblendet"
+        : "Fotos: keine Marker";
+    }
+    return;
+  }
+
+  photoLayer = L.layerGroup().addTo(map);
+  const latlngs = [];
+
+  clusters.forEach((cluster) => {
+    latlngs.push([cluster.lat, cluster.lon]);
+    const icon = L.divIcon({
+      className: "",
+      html: `<div class="photo-marker" title="Fotos">${cluster.count}</div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+    });
+    const marker = L.marker([cluster.lat, cluster.lon], { icon });
+    marker.bindPopup(photoPopupHtml(cluster), {
+      className: "photo-popup-wrap",
+      maxWidth: 440,
+    });
+    marker.addTo(photoLayer);
+  });
+
+  photoBounds = L.latLngBounds(latlngs);
+  if (el.photoInfo) {
+    const total = clusters.reduce((n, c) => n + c.count, 0);
+    el.photoInfo.textContent = `Fotos: ${total} Bilder, ${clusters.length} Marker`;
+  }
+}
+
+function fitMapBounds() {
+  const boundsList = [];
+  if (trackBounds) boundsList.push(trackBounds);
+  if (photoBounds && el.showPhotos?.checked) boundsList.push(photoBounds);
+  if (!boundsList.length) return;
+  let bounds = boundsList[0];
+  for (let i = 1; i < boundsList.length; i += 1) {
+    bounds = bounds.extend(boundsList[i]);
+  }
+  map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+}
+
 function clearTrack() {
   if (trackLayer) {
     map.removeLayer(trackLayer);
     trackLayer = null;
   }
   trackBounds = null;
+  clearPhotos();
   el.card.hidden = true;
   el.fit.disabled = true;
   el.count.textContent = "—";
@@ -248,9 +323,34 @@ function drawTrack(points) {
   });
 
   trackBounds = L.latLngBounds(latlngs);
-  map.fitBounds(trackBounds, { padding: [40, 40], maxZoom: 14 });
+  fitMapBounds();
   el.fit.disabled = false;
   el.count.textContent = `${points.length.toLocaleString("de-DE")} Punkte`;
+}
+
+async function loadPhotos(toernId) {
+  if (!el.showPhotos?.checked) {
+    clearPhotos();
+    if (el.photoInfo) el.photoInfo.textContent = "Fotos: ausgeblendet";
+    return;
+  }
+  try {
+    const res = await fetch(`/api/photos/${toernId}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Fotos konnten nicht geladen werden.");
+    }
+    const data = await res.json();
+    drawPhotoClusters(data.clusters || []);
+    if (data.warnings?.length) {
+      showToast(data.warnings[0]);
+    }
+    if (trackBounds || photoBounds) fitMapBounds();
+  } catch (err) {
+    clearPhotos();
+    if (el.photoInfo) el.photoInfo.textContent = "Fotos: Fehler";
+    showToast(err.message || "Fotos nicht verfügbar");
+  }
 }
 
 async function loadToerns() {
@@ -300,12 +400,17 @@ async function loadTrack(toernId, toerns) {
   const toern = toerns.find((t) => t.id === Number(toernId));
   renderMeta(toern);
   drawTrack(data.points);
+  await loadPhotos(toernId);
 }
 
 async function main() {
   renderLegend();
-  el.fit.addEventListener("click", () => {
-    if (trackBounds) map.fitBounds(trackBounds, { padding: [40, 40], maxZoom: 14 });
+  el.fit.addEventListener("click", () => fitMapBounds());
+  el.showPhotos?.addEventListener("change", async () => {
+    const id = Number(el.select.value);
+    if (!Number.isFinite(id)) return;
+    await loadPhotos(id);
+    fitMapBounds();
   });
 
   try {

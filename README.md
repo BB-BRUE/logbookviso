@@ -75,3 +75,33 @@ docker network create proxy
 - Hover-Popup mit Time, COG, LAT, LON, SOG, M/H, LOG, GEO, Freitext und Wetterdaten
 - `recordtype = 1` → größere Punkte (manuelle Einträge)
 - Status-Farben: 0 Segeln, 1 Festgemacht, 2 Motor, 3 Anker
+- **Google Fotos:** öffentliche Teilen-Links pro Törn, Marker mit Galerie (ohne Bilder aus SQLite)
+
+### Google Fotos (Teilen-Link)
+
+Öffentliche Google-Photos-Alben (`photos.app.goo.gl/…` oder `photos.google.com/share/…`) werden serverseitig eingelesen. **GPS-Koordinaten stehen in Teilen-Links nicht zuverlässig zur Verfügung** – die App setzt die Bilder daher per **Aufnahmezeit** dem nächsten Track-Punkt desselben Törns zu (nur Zeit/Koordinaten aus dem Logbuch, keine `bilddata` aus SQLite). Fotos in der Nähe werden unter **einem Marker** gebündelt (`clusterRadiusMeters`).
+
+1. Vorlage kopieren:
+
+```bash
+cp data/google-photos.json.example data/google-photos.json
+```
+
+2. Pro Törn Album-Links eintragen (`toern`-ID wie in der Datenbank):
+
+```json
+{
+  "clusterRadiusMeters": 250,
+  "toerns": {
+    "0": {
+      "albums": ["https://photos.app.goo.gl/DEIN_LINK"]
+    }
+  }
+}
+```
+
+3. Optional: Einzelbilder mit **festen Koordinaten** (`manualPhotos`), wenn kein Zeitstempel passt.
+
+4. Container neu starten bzw. Seite neu laden. Auf der Karte: gelbe Marker mit Anzahl → Klick öffnet Galerie.
+
+Cache (Album-Inhalte): standardmäßig `/tmp/photos-cache` im Container (Schreibzugriff, da `./data` read-only gemountet ist).

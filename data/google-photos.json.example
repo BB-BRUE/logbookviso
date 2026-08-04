@@ -1,0 +1,20 @@
+{
+  "clusterRadiusMeters": 250,
+  "cacheTtlSeconds": 3600,
+  "toerns": {
+    "4": {
+      "albums": [
+        "https://photos.app.goo.gl/eVEebyk66VC4gLzc7"
+      ]
+    }
+  },
+  "manualPhotos": [
+    {
+      "toern": 0,
+      "lat": 45.002,
+      "lon": 14.607,
+      "url": "https://lh3.googleusercontent.com/...",
+      "title": "Optional: feste Koordinaten"
+    }
+  ]
+}
