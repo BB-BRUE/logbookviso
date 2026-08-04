@@ -1,4 +1,4 @@
-"""Uploaded trip photos: files under data/photos/, metadata in SQLite."""
+"""Uploaded trip photos: files under PHOTOS_DIR, metadata in SYSTEM_DB."""
 
 from __future__ import annotations
 
@@ -447,12 +447,6 @@ def list_photos_manage(db_path: Path, toern: int) -> list[tuple[StoredPhoto, int
             (toern,),
         ).fetchall()
     return [(_row_to_photo(r), r["created_at_ms"]) for r in rows]
-
-
-def get_photo_toern(db_path: Path, photo_id: int) -> int | None:
-    with get_photos_conn(db_path) as conn:
-        row = conn.execute("SELECT toern FROM photos WHERE id = ?", (photo_id,)).fetchone()
-        return int(row["toern"]) if row else None
 
 
 def update_photo(

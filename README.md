@@ -54,8 +54,6 @@ Alle Seiten außer `/login` erfordern eine Anmeldung. Beim **ersten Start** (lee
 | `SECRET_KEY` | `dev-change-me-in-production` (Session-Cookies; in Produktion setzen!) |
 | `SYSTEM_DB` | `data/system.sqlite` |
 
-Bestehende Installation: Datei `photos.sqlite` ggf. nach `system.sqlite` umbenennen oder `SYSTEM_DB=/data/photos.sqlite` setzen.
-
 - **Admin:** `/admin` (Benutzer), `/admin/logbook` (Logbook-Import)
 - **User** sehen nur zugeordnete Törns (Karte, Track, Fotos).
 - **Foto-Bearbeitung/Löschen:** Uploader oder Admin.

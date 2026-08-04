@@ -7,4 +7,5 @@ __pycache__
 .venv
 venv
 logbook.sqlite
+data/*.sqlite
 *.md

@@ -251,7 +251,7 @@ def api_toerns(user):
 @app.get("/api/track/<int:toern_id>")
 @require_login_api(SYSTEM_DB)
 def api_track(toern_id: int, user):
-    denied = require_toern_access(SYSTEM_DB, toern_id, user)
+    denied = require_toern_access(toern_id, user)
     if denied:
         return denied
     rows = fetch_track_rows(SYSTEM_DB, toern_id)
@@ -290,7 +290,7 @@ def api_track(toern_id: int, user):
 @app.get("/api/photos/<int:toern_id>")
 @require_login_api(SYSTEM_DB)
 def api_photos(toern_id: int, user):
-    denied = require_toern_access(SYSTEM_DB, toern_id, user)
+    denied = require_toern_access(toern_id, user)
     if denied:
         return denied
     photos = list_photos(SYSTEM_DB, toern_id)
@@ -319,7 +319,7 @@ def api_photos_upload(user):
     except ValueError:
         return jsonify({"error": "Ungültige Törn-ID."}), 400
 
-    denied = require_toern_access(SYSTEM_DB, toern, user)
+    denied = require_toern_access(toern, user)
     if denied:
         return denied
 
@@ -377,7 +377,7 @@ def api_photos_upload(user):
 @app.get("/api/photos/list/<int:toern_id>")
 @require_login_api(SYSTEM_DB)
 def api_photos_list(toern_id: int, user):
-    denied = require_toern_access(SYSTEM_DB, toern_id, user)
+    denied = require_toern_access(toern_id, user)
     if denied:
         return denied
     rows = list_photos_manage(SYSTEM_DB, toern_id)
@@ -399,7 +399,7 @@ def api_photos_list(toern_id: int, user):
 @app.post("/api/photos/import/<int:toern_id>")
 @require_login_api(SYSTEM_DB)
 def api_photos_import(toern_id: int, user):
-    denied = require_toern_access(SYSTEM_DB, toern_id, user)
+    denied = require_toern_access(toern_id, user)
     if denied:
         return denied
     body = request.get_json(silent=True) or {}
@@ -501,7 +501,7 @@ def api_photos_file(photo_id: int, user):
     photo, path = get_photo(SYSTEM_DB, PHOTOS_DIR, photo_id)
     if photo is None or path is None:
         return jsonify({"error": "Foto nicht gefunden."}), 404
-    denied = require_toern_access(SYSTEM_DB, photo.toern, user)
+    denied = require_toern_access(photo.toern, user)
     if denied:
         return denied
 
@@ -523,17 +523,6 @@ def api_photos_file(photo_id: int, user):
             pass
 
     return send_from_directory(path.parent, path.name)
-
-
-@app.get("/api/status-legend")
-@require_login_api(SYSTEM_DB)
-def api_status_legend(user):
-    return jsonify(
-        [
-            {"status": k, "label": v}
-            for k, v in sorted(STATUS_LABELS.items())
-        ]
-    )
 
 
 @app.get("/api/admin/users")

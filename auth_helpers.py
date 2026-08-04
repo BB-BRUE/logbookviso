@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import wraps
 from typing import Callable, TypeVar
 
-from flask import jsonify, redirect, request, session, url_for
+from flask import jsonify, session
 
 from users_store import User, can_access_toern, can_edit_photo, get_user_by_id
 
@@ -59,7 +59,7 @@ def require_admin_api(db_path):
     return decorator
 
 
-def require_toern_access(db_path, toern_id: int, user: User):
+def require_toern_access(toern_id: int, user: User):
     if not can_access_toern(user, toern_id):
         return jsonify({"error": "Kein Zugriff auf diesen Törn."}), 403
     return None
