@@ -1,4 +1,4 @@
-"""Users, Törn-Zuordnung und Auth (gespeichert in photos.sqlite / APP_DB)."""
+"""Users, Törn-Zuordnung und Auth (gespeichert in SYSTEM_DB / system.sqlite)."""
 
 from __future__ import annotations
 
@@ -19,14 +19,6 @@ class User:
     username: str
     role: str
     toern_ids: list[int]
-
-
-def _migrate_photos_owner(conn: sqlite3.Connection) -> None:
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(photos)").fetchall()}
-    if "uploaded_by_user_id" not in cols:
-        conn.execute(
-            "ALTER TABLE photos ADD COLUMN uploaded_by_user_id INTEGER REFERENCES users(id)"
-        )
 
 
 def init_app_db(db_path) -> None:
@@ -59,7 +51,6 @@ def init_app_db(db_path) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_user_toerns_user ON user_toerns(user_id)"
         )
-        _migrate_photos_owner(conn)
 
 
 def get_conn(db_path) -> sqlite3.Connection:

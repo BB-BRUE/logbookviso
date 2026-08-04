@@ -1,6 +1,6 @@
 # Logbook Viso
 
-Interaktive Karte für Segel-/Motorboot-Logbuch-Tracks aus `logbook.sqlite`.
+Interaktive Karte für Segel-/Motorboot-Logbuch-Tracks. **Alle App-Daten** (Törns, Track-Punkte, Fotos, Benutzer) liegen in **`data/system.sqlite`** (`SYSTEM_DB`); Bilddateien unter `data/photos/`.
 
 ## Lokal starten
 
@@ -13,7 +13,7 @@ Dann im Browser: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 
 ## Docker
 
-Die SQLite-Datei wird per Volume gemountet und liegt **nicht** im Image.
+Persistente Daten nur im Volume `./data` (nicht im Image).
 
 ```bash
 docker compose up --build
@@ -21,48 +21,44 @@ docker compose up --build
 
 App: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 
-Volume-Mapping in `docker-compose.yml`:
-
 ```yaml
 volumes:
   - ./data:/data
 ```
 
-Die Datenbank liegt unter `data/logbook.sqlite`. Uploads: `data/photos/` und `data/photos.sqlite` (Fotos **und** Benutzer).
+| Pfad | Inhalt |
+| --- | --- |
+| `data/system.sqlite` | Törns, Track-Punkte, Fotos-Metadaten, Benutzer |
+| `data/photos/<törn-id>/` | Bilddateien |
+| `data/logbook_uploads/` | temporäre Logbook-Uploads (Admin) |
+
+## Logbook importieren (Admin)
+
+Es gibt **kein** fest gemountetes `logbook.sqlite` mehr.
+
+1. Als Admin anmelden → [http://127.0.0.1:5000/admin/logbook](http://127.0.0.1:5000/admin/logbook)
+2. Viso-**logbook.sqlite** hochladen (temporär)
+3. Törns auswählen → **In App-Datenbank übernehmen**
+4. Danach Törns auf der Karte sichtbar; unter `/admin` Usern zuordnen
+
+Erneuter Import **ersetzt** Track-Daten für die gewählten Törn-IDs. Die Upload-Datei wird nach erfolgreichem Import gelöscht.
 
 ## Anmeldung & Benutzer
 
-Alle Seiten außer `/login` erfordern eine Anmeldung. Beim **ersten Start** (leere Benutzertabelle in `photos.sqlite`) wird ein Admin angelegt:
+Alle Seiten außer `/login` erfordern eine Anmeldung. Beim **ersten Start** (leere Benutzertabelle) wird ein Admin angelegt:
 
 | Umgebungsvariable | Standard |
 | --- | --- |
 | `INIT_ADMIN_USER` | `admin` |
 | `INIT_ADMIN_PASSWORD` | `admin` |
 | `SECRET_KEY` | `dev-change-me-in-production` (Session-Cookies; in Produktion setzen!) |
+| `SYSTEM_DB` | `data/system.sqlite` |
 
-Nach dem Login: **Admin** unter `/admin` – Benutzer anlegen, Passwörter setzen, Törns zuordnen.
+Bestehende Installation: Datei `photos.sqlite` ggf. nach `system.sqlite` umbenennen oder `SYSTEM_DB=/data/photos.sqlite` setzen.
 
+- **Admin:** `/admin` (Benutzer), `/admin/logbook` (Logbook-Import)
 - **User** sehen nur zugeordnete Törns (Karte, Track, Fotos).
-- **Foto-Bearbeitung/Löschen:** Uploader oder Admin; ältere Fotos ohne Uploader nur Admin.
-- Kein „Passwort vergessen“ – Passwortänderung nur durch Admin (oder neues Passwort beim Bearbeiten des Users).
-
-Andere DB-Datei z. B. so:
-
-```bash
-docker compose run --rm -p 5000:5000 \
-  -v /pfad/zu/meiner.sqlite:/data/logbook.sqlite:ro \
-  logbookviso
-```
-
-Oder direkt mit Docker:
-
-```bash
-docker build -t logbookviso .
-docker run --rm -p 5000:5000 \
-  -e LOGBOOK_DB=/data/logbook.sqlite \
-  -v "%CD%\logbook.sqlite:/data/logbook.sqlite:ro" \
-  logbookviso
-```
+- **Foto-Bearbeitung/Löschen:** Uploader oder Admin.
 
 ### SWAG Reverse Proxy
 
@@ -75,43 +71,23 @@ Configs unter `swag/`:
 
 1. Gewünschte Conf nach SWAG kopieren: `/config/nginx/proxy-confs/`
 2. DNS für Subdomain setzen (bei Subdomain-Variante)
-3. Container und SWAG im gleichen Docker-Netz (`proxy` in `docker-compose.yml`, ggf. anpassen)
+3. Container und SWAG im gleichen Docker-Netz (`swag_proxy-net` in `docker-compose.yml`, ggf. anpassen)
 4. SWAG neu starten
-
-```bash
-# Netz anlegen, falls noch nicht vorhanden
-docker network create proxy
-```
 
 ## Funktionen
 
 - Zoom und Verschieben der Karte (Leaflet / OpenStreetMap)
-- Törn-Auswahl (Filter über Spalte `toern`)
+- Törn-Auswahl aus importierten Törns
 - Track als farbige Linie + Punkte
 - Hover-Popup mit Time, COG, LAT, LON, SOG, M/H, LOG, GEO, Freitext und Wetterdaten
 - `recordtype = 1` → größere Punkte (manuelle Einträge)
 - Status-Farben: 0 Segeln, 1 Festgemacht, 2 Motor, 3 Anker
 - **Foto-Upload** pro Törn mit GPS (EXIF oder manuell), Cluster-Marker auf der Karte
 
-### Fotos hochladen
+### Fotos
 
-Speicherort (Docker-Volume `./data`):
+**Verwaltung:** [http://127.0.0.1:5000/photos](http://127.0.0.1:5000/photos) – Upload, Metadaten bearbeiten, Ordner einlesen.
 
-| Pfad | Inhalt |
-| --- | --- |
-| `data/photos/<toern>/` | Bilddateien |
-| `data/photos.sqlite` | Metadaten (Koordinaten, Törn, Dateiname) |
+Koordinaten: EXIF-GPS, manuelles LAT/LON, oder Track-Zeit-Matching.
 
-In der Sidebar: Dateien wählen → **Hochladen** (aktuell gewählter Törn).
-
-**Verwaltung:** [http://127.0.0.1:5000/photos](http://127.0.0.1:5000/photos) – Upload, Titel/Koordinaten nachträglich ändern, löschen, **Ordner einlesen** (Dateien manuell nach `data/photos/<törn-id>/` kopieren → „Ordner neu einlesen“). Von der Karte über **Fotos verwalten →** (mit Törn in der URL).
-
-Koordinaten:
-
-1. **EXIF-GPS** im Bild (empfohlen), oder
-2. **LAT/LON** im Formular (für alle Dateien des Uploads), oder
-3. **Track-Zeit**: Aufnahmezeit aus EXIF → nächster Track-Punkt desselben Törns
-
-Marker in der Nähe werden gebündelt (~250 m). Bilder werden nicht in `logbook.sqlite` gespeichert.
-
-Upload-Limit pro Anfrage: **256 MB** (Umgebungsvariable `MAX_UPLOAD_MB`). Hinter SWAG/Nginx ggf. `client_max_body_size` anpassen (siehe `swag/logbookviso.subdomain.conf`).
+Upload-Limit: **256 MB** (`MAX_UPLOAD_MB`). Hinter SWAG/Nginx `client_max_body_size` anpassen (siehe `swag/logbookviso.subdomain.conf`).

@@ -44,10 +44,11 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
+from logbook_store import init_logbook_schema
 from users_store import init_app_db as _init_users_schema
 
 
-def init_photos_db(db_path: Path) -> None:
+def init_system_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
@@ -69,11 +70,12 @@ def init_photos_db(db_path: Path) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_photos_toern ON photos(toern)"
         )
+    init_logbook_schema(db_path)
     _init_users_schema(db_path)
 
 
 def get_photos_conn(db_path: Path) -> sqlite3.Connection:
-    init_photos_db(db_path)
+    init_system_db(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
