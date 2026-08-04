@@ -13,9 +13,14 @@ from flask import Flask, jsonify, request, send_from_directory
 from photos_store import (
     clusters_to_json,
     cluster_photos,
+    delete_photo,
     get_photo,
+    import_photos_from_folder,
     list_photos,
+    list_photos_manage,
+    photo_manage_dict,
     save_upload,
+    update_photo,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -130,6 +135,11 @@ def track_timeline(conn: sqlite3.Connection, toern_id: int) -> list[tuple[int, f
 @app.get("/")
 def index():
     return send_from_directory(STATIC, "index.html")
+
+
+@app.get("/photos")
+def photos_manage_page():
+    return send_from_directory(STATIC, "photos-manage.html")
 
 
 @app.get("/api/toerns")
@@ -332,6 +342,90 @@ def api_photos_upload():
         return jsonify({"error": errors[0], "errors": errors}), 400
 
     return jsonify({"saved": saved, "errors": errors, "count": len(saved)})
+
+
+@app.get("/api/photos/list/<int:toern_id>")
+def api_photos_list(toern_id: int):
+    items = list_photos_manage(PHOTOS_DB, toern_id)
+    return jsonify({"toernId": toern_id, "count": len(items), "photos": items})
+
+
+@app.post("/api/photos/import/<int:toern_id>")
+def api_photos_import(toern_id: int):
+    body = request.get_json(silent=True) or {}
+    refresh = bool(body.get("refreshExisting"))
+
+    with get_db() as conn:
+        track = track_timeline(conn, toern_id)
+
+    imported, updated, warnings, meta = import_photos_from_folder(
+        PHOTOS_DB,
+        PHOTOS_DIR,
+        toern_id,
+        track,
+        refresh_existing=refresh,
+    )
+
+    return jsonify(
+        {
+            "toernId": toern_id,
+            "imported": [{"id": p.id, "filename": p.filename} for p in imported],
+            "updated": [{"id": p.id, "filename": p.filename} for p in updated],
+            "warnings": warnings,
+            "meta": meta,
+        }
+    )
+
+
+@app.patch("/api/photos/item/<int:photo_id>")
+def api_photos_update(photo_id: int):
+    body = request.get_json(silent=True) or {}
+    title = body.get("title")
+    lat = body.get("lat")
+    lon = body.get("lon")
+
+    if lat is not None or lon is not None:
+        if lat is None or lon is None:
+            return jsonify({"error": "LAT und LON gemeinsam angeben."}), 400
+        try:
+            lat = float(lat)
+            lon = float(lon)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Ungültige Koordinaten."}), 400
+
+    if title is not None:
+        title = str(title).strip()
+
+    photo = update_photo(
+        PHOTOS_DB,
+        photo_id,
+        title=title if "title" in body else None,
+        lat=lat if "lat" in body else None,
+        lon=lon if "lon" in body else None,
+    )
+    if photo is None:
+        return jsonify({"error": "Foto nicht gefunden."}), 404
+
+    created_at_ms = None
+    conn = sqlite3.connect(PHOTOS_DB)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT created_at_ms FROM photos WHERE id = ?", (photo_id,)
+        ).fetchone()
+        if row:
+            created_at_ms = row["created_at_ms"]
+    finally:
+        conn.close()
+
+    return jsonify(photo_manage_dict(photo, created_at_ms))
+
+
+@app.delete("/api/photos/item/<int:photo_id>")
+def api_photos_delete(photo_id: int):
+    if not delete_photo(PHOTOS_DB, PHOTOS_DIR, photo_id):
+        return jsonify({"error": "Foto nicht gefunden."}), 404
+    return jsonify({"deleted": photo_id})
 
 
 @app.get("/api/photos/file/<int:photo_id>")

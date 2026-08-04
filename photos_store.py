@@ -218,30 +218,269 @@ def save_upload(
     )
 
 
+def _resolve_photo_coords(
+    file_path: Path,
+    track: list[tuple[int, float, float]] | None,
+) -> tuple[float | None, float | None, int | None, str | None]:
+    exif_lat, exif_lon, taken_ms = extract_exif(file_path)
+    use_lat, use_lon = exif_lat, exif_lon
+    if (use_lat is None or use_lon is None) and taken_ms and track:
+        pt = nearest_track_point(taken_ms, track)
+        if pt:
+            use_lat, use_lon = pt
+    if use_lat is None or use_lon is None:
+        return None, None, taken_ms, "Keine Koordinaten (EXIF) und kein Track-Treffer."
+    return float(use_lat), float(use_lon), taken_ms, None
+
+
+def _insert_photo_row(
+    db_path: Path,
+    toern: int,
+    filename: str,
+    original_name: str,
+    title: str,
+    lat: float,
+    lon: float,
+    taken_at_ms: int | None,
+) -> StoredPhoto:
+    now_ms = int(time.time() * 1000)
+    with get_photos_conn(db_path) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO photos
+                (toern, filename, original_name, title, lat, lon, taken_at_ms, created_at_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (toern, filename, original_name, title, lat, lon, taken_at_ms, now_ms),
+        )
+        photo_id = int(cur.lastrowid)
+        conn.commit()
+    return StoredPhoto(
+        id=photo_id,
+        toern=toern,
+        filename=filename,
+        original_name=original_name,
+        title=title,
+        lat=lat,
+        lon=lon,
+        taken_at_ms=taken_at_ms,
+    )
+
+
+def import_photos_from_folder(
+    db_path: Path,
+    photos_dir: Path,
+    toern: int,
+    track: list[tuple[int, float, float]] | None = None,
+    *,
+    refresh_existing: bool = False,
+) -> tuple[list[StoredPhoto], list[StoredPhoto], list[str], dict[str, Any]]:
+    """
+    Liest Bilder aus data/photos/<toörn>/ ein.
+    - Neue Dateien → DB-Eintrag (EXIF-GPS oder Track-Zeit)
+    - refresh_existing: GPS/Zeit für vorhandene DB-Einträge aus EXIF aktualisieren
+    """
+    toern_dir = photos_dir / str(toern)
+    warnings: list[str] = []
+    imported: list[StoredPhoto] = []
+    updated: list[StoredPhoto] = []
+
+    if not toern_dir.is_dir():
+        warnings.append(f"Ordner nicht gefunden: {toern_dir}")
+        return imported, updated, warnings, {"folder": str(toern_dir), "scanned": 0}
+
+    with get_photos_conn(db_path) as conn:
+        db_rows = conn.execute(
+            """
+            SELECT id, filename, original_name, title, lat, lon, taken_at_ms
+            FROM photos WHERE toern = ?
+            """,
+            (toern,),
+        ).fetchall()
+
+    known_by_filename = {r["filename"]: r for r in db_rows}
+    disk_names: set[str] = set()
+    scanned = 0
+
+    for file_path in sorted(toern_dir.iterdir()):
+        if not file_path.is_file():
+            continue
+        if file_path.suffix.lower() not in ALLOWED_EXT:
+            continue
+        scanned += 1
+        disk_names.add(file_path.name)
+
+        if file_path.name in known_by_filename:
+            if not refresh_existing:
+                continue
+            lat, lon, taken_ms, err = _resolve_photo_coords(file_path, track)
+            if err:
+                warnings.append(f"{file_path.name}: {err}")
+                continue
+            row = known_by_filename[file_path.name]
+            with get_photos_conn(db_path) as conn:
+                conn.execute(
+                    """
+                    UPDATE photos SET lat = ?, lon = ?, taken_at_ms = ?
+                    WHERE id = ?
+                    """,
+                    (lat, lon, taken_ms, row["id"]),
+                )
+                conn.commit()
+            updated.append(
+                StoredPhoto(
+                    id=int(row["id"]),
+                    toern=toern,
+                    filename=row["filename"],
+                    original_name=row["original_name"] or file_path.name,
+                    title=row["title"] or "",
+                    lat=lat,
+                    lon=lon,
+                    taken_at_ms=taken_ms,
+                )
+            )
+            continue
+
+        lat, lon, taken_ms, err = _resolve_photo_coords(file_path, track)
+        if err:
+            warnings.append(f"{file_path.name}: {err}")
+            continue
+
+        title = file_path.stem
+        photo = _insert_photo_row(
+            db_path,
+            toern,
+            file_path.name,
+            file_path.name,
+            title,
+            lat,
+            lon,
+            taken_ms,
+        )
+        imported.append(photo)
+
+    missing_on_disk = [fn for fn in known_by_filename if fn not in disk_names]
+    if missing_on_disk:
+        warnings.append(
+            f"{len(missing_on_disk)} DB-Einträge ohne Datei im Ordner (z. B. {missing_on_disk[0]})."
+        )
+
+    meta = {
+        "folder": str(toern_dir.resolve()),
+        "scanned": scanned,
+        "imported": len(imported),
+        "updated": len(updated),
+        "refreshExisting": refresh_existing,
+    }
+    return imported, updated, warnings, meta
+
+
 def list_photos(db_path: Path, toern: int) -> list[StoredPhoto]:
     with get_photos_conn(db_path) as conn:
         rows = conn.execute(
             """
-            SELECT id, toern, filename, original_name, title, lat, lon, taken_at_ms
+            SELECT id, toern, filename, original_name, title, lat, lon, taken_at_ms,
+                   created_at_ms
             FROM photos
             WHERE toern = ?
             ORDER BY COALESCE(taken_at_ms, created_at_ms), id
             """,
             (toern,),
         ).fetchall()
-    return [
-        StoredPhoto(
-            id=int(r["id"]),
-            toern=int(r["toern"]),
-            filename=r["filename"],
-            original_name=r["original_name"] or "",
-            title=r["title"] or "",
-            lat=float(r["lat"]),
-            lon=float(r["lon"]),
-            taken_at_ms=r["taken_at_ms"],
+    return [_row_to_photo(r) for r in rows]
+
+
+def _row_to_photo(r: sqlite3.Row) -> StoredPhoto:
+    return StoredPhoto(
+        id=int(r["id"]),
+        toern=int(r["toern"]),
+        filename=r["filename"],
+        original_name=r["original_name"] or "",
+        title=r["title"] or "",
+        lat=float(r["lat"]),
+        lon=float(r["lon"]),
+        taken_at_ms=r["taken_at_ms"],
+    )
+
+
+def photo_manage_dict(p: StoredPhoto, created_at_ms: int | None = None) -> dict[str, Any]:
+    return {
+        "id": p.id,
+        "toern": p.toern,
+        "title": p.title,
+        "originalName": p.original_name,
+        "lat": p.lat,
+        "lon": p.lon,
+        "takenAtMs": p.taken_at_ms,
+        "createdAtMs": created_at_ms,
+        "thumbUrl": f"/api/photos/file/{p.id}?thumb=1",
+        "url": f"/api/photos/file/{p.id}",
+    }
+
+
+def list_photos_manage(db_path: Path, toern: int) -> list[dict[str, Any]]:
+    with get_photos_conn(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, toern, filename, original_name, title, lat, lon, taken_at_ms,
+                   created_at_ms
+            FROM photos
+            WHERE toern = ?
+            ORDER BY COALESCE(taken_at_ms, created_at_ms) DESC, id DESC
+            """,
+            (toern,),
+        ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        p = _row_to_photo(r)
+        out.append(photo_manage_dict(p, r["created_at_ms"]))
+    return out
+
+
+def update_photo(
+    db_path: Path,
+    photo_id: int,
+    *,
+    title: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
+) -> StoredPhoto | None:
+    fields: list[str] = []
+    values: list[Any] = []
+    if title is not None:
+        fields.append("title = ?")
+        values.append(title)
+    if lat is not None:
+        fields.append("lat = ?")
+        values.append(float(lat))
+    if lon is not None:
+        fields.append("lon = ?")
+        values.append(float(lon))
+    if not fields:
+        photo, _ = get_photo(db_path, Path("."), photo_id)
+        return photo
+
+    values.append(photo_id)
+    with get_photos_conn(db_path) as conn:
+        conn.execute(
+            f"UPDATE photos SET {', '.join(fields)} WHERE id = ?",
+            values,
         )
-        for r in rows
-    ]
+        conn.commit()
+    photo, _ = get_photo(db_path, Path("."), photo_id)
+    return photo
+
+
+def delete_photo(db_path: Path, photos_dir: Path, photo_id: int) -> bool:
+    photo, path = get_photo(db_path, photos_dir, photo_id)
+    if photo is None:
+        return False
+    with get_photos_conn(db_path) as conn:
+        conn.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
+        conn.commit()
+    if path and path.is_file():
+        path.unlink()
+    return True
 
 
 def photo_file_path(photos_dir: Path, photo: StoredPhoto) -> Path:
@@ -259,16 +498,7 @@ def get_photo(db_path: Path, photos_dir: Path, photo_id: int) -> tuple[StoredPho
         ).fetchone()
     if row is None:
         return None, None
-    photo = StoredPhoto(
-        id=int(row["id"]),
-        toern=int(row["toern"]),
-        filename=row["filename"],
-        original_name=row["original_name"] or "",
-        title=row["title"] or "",
-        lat=float(row["lat"]),
-        lon=float(row["lon"]),
-        taken_at_ms=row["taken_at_ms"],
-    )
+    photo = _row_to_photo(row)
     path = photo_file_path(photos_dir, photo)
     if not path.is_file():
         return photo, None

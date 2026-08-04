@@ -88,6 +88,8 @@ Speicherort (Docker-Volume `./data`):
 
 In der Sidebar: Dateien wählen → **Hochladen** (aktuell gewählter Törn).
 
+**Verwaltung:** [http://127.0.0.1:5000/photos](http://127.0.0.1:5000/photos) – Upload, Titel/Koordinaten nachträglich ändern, löschen, **Ordner einlesen** (Dateien manuell nach `data/photos/<törn-id>/` kopieren → „Ordner neu einlesen“). Von der Karte über **Fotos verwalten →** (mit Törn in der URL).
+
 Koordinaten:
 
 1. **EXIF-GPS** im Bild (empfohlen), oder

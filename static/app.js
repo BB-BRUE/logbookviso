@@ -16,9 +16,7 @@ const el = {
   mapWrap: document.querySelector(".map-wrap"),
   showPhotos: document.getElementById("showPhotos"),
   photoInfo: document.getElementById("photoInfo"),
-  photoUpload: document.getElementById("photoUpload"),
-  photoFiles: document.getElementById("photoFiles"),
-  photoUploadBtn: document.getElementById("photoUploadBtn"),
+  managePhotosLink: document.getElementById("managePhotosLink"),
 };
 
 let trackLayer = null;
@@ -26,6 +24,18 @@ let photoLayer = null;
 let trackBounds = null;
 let photoBounds = null;
 let toastTimer = null;
+let lightboxPhotos = [];
+let lightboxIndex = 0;
+
+const lightbox = {
+  root: null,
+  main: null,
+  caption: null,
+  strip: null,
+  close: null,
+  prev: null,
+  next: null,
+};
 
 const map = L.map("map", {
   zoomControl: true,
@@ -167,6 +177,83 @@ function placeCard(latlng) {
   card.style.top = `${top}px`;
 }
 
+function initPhotoLightbox() {
+  lightbox.root = document.getElementById("photoLightbox");
+  lightbox.main = document.getElementById("photoLightboxMain");
+  lightbox.caption = document.getElementById("photoLightboxCaption");
+  lightbox.strip = document.getElementById("photoLightboxStrip");
+  lightbox.close = document.getElementById("photoLightboxClose");
+  lightbox.prev = document.getElementById("photoLightboxPrev");
+  lightbox.next = document.getElementById("photoLightboxNext");
+  if (!lightbox.root) return;
+
+  lightbox.close.addEventListener("click", closePhotoLightbox);
+  lightbox.root.addEventListener("click", (e) => {
+    if (e.target === lightbox.root) closePhotoLightbox();
+  });
+  lightbox.prev.addEventListener("click", () => stepLightbox(-1));
+  lightbox.next.addEventListener("click", () => stepLightbox(1));
+  lightbox.strip.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-index]");
+    if (!btn) return;
+    setLightboxIndex(Number(btn.dataset.index));
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (lightbox.root.hidden) return;
+    if (e.key === "Escape") closePhotoLightbox();
+    if (e.key === "ArrowLeft") stepLightbox(-1);
+    if (e.key === "ArrowRight") stepLightbox(1);
+  });
+}
+
+function renderLightboxStrip() {
+  lightbox.strip.innerHTML = lightboxPhotos
+    .map((p, i) => {
+      const title = escapeHtml(p.title || "Foto");
+      const active = i === lightboxIndex ? " is-active" : "";
+      return `<button type="button" class="photo-lightbox-thumb${active}" data-index="${i}" title="${title}">
+        <img src="${escapeHtml(p.thumbUrl)}" alt="" loading="lazy" />
+      </button>`;
+    })
+    .join("");
+  const activeThumb = lightbox.strip.querySelector(".is-active");
+  activeThumb?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+}
+
+function setLightboxIndex(index) {
+  if (!lightboxPhotos.length) return;
+  lightboxIndex = (index + lightboxPhotos.length) % lightboxPhotos.length;
+  const p = lightboxPhotos[lightboxIndex];
+  lightbox.main.src = p.url;
+  lightbox.main.alt = p.title || "Foto";
+  const n = lightboxPhotos.length;
+  lightbox.caption.textContent = `${p.title || "Foto"} (${lightboxIndex + 1} / ${n})`;
+  lightbox.prev.hidden = n <= 1;
+  lightbox.next.hidden = n <= 1;
+  renderLightboxStrip();
+}
+
+function stepLightbox(delta) {
+  setLightboxIndex(lightboxIndex + delta);
+}
+
+function openPhotoLightbox(cluster, startIndex = 0) {
+  if (!lightbox.root || !cluster?.photos?.length) return;
+  lightboxPhotos = cluster.photos;
+  lightbox.root.hidden = false;
+  document.body.classList.add("lightbox-open");
+  setLightboxIndex(Math.min(startIndex, lightboxPhotos.length - 1));
+}
+
+function closePhotoLightbox() {
+  if (!lightbox.root) return;
+  lightbox.root.hidden = true;
+  document.body.classList.remove("lightbox-open");
+  lightbox.main.removeAttribute("src");
+  lightboxPhotos = [];
+}
+
 function clearPhotos() {
   if (photoLayer) {
     map.removeLayer(photoLayer);
@@ -176,20 +263,9 @@ function clearPhotos() {
   if (el.photoInfo) el.photoInfo.textContent = "Fotos: —";
 }
 
-function photoPopupHtml(cluster) {
-  const items = cluster.photos
-    .map((p) => {
-      const title = p.title ? escapeHtml(p.title) : "Foto";
-      return `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer" title="${title}">
-        <img src="${escapeHtml(p.thumbUrl)}" alt="${title}" loading="lazy" />
-      </a>`;
-    })
-    .join("");
-  return `<div class="photo-popup"><h4>${cluster.count} Foto${cluster.count === 1 ? "" : "s"}</h4><div class="photo-grid">${items}</div></div>`;
-}
-
 function drawPhotoClusters(clusters) {
   clearPhotos();
+  closePhotoLightbox();
   if (!el.showPhotos?.checked || !clusters.length) {
     if (el.photoInfo) {
       el.photoInfo.textContent = clusters.length
@@ -211,11 +287,7 @@ function drawPhotoClusters(clusters) {
       iconAnchor: [13, 13],
     });
     const marker = L.marker([cluster.lat, cluster.lon], { icon });
-    marker.bindPopup(photoPopupHtml(cluster), {
-      className: "photo-popup-wrap",
-      maxWidth: 660,
-      minWidth: 300,
-    });
+    marker.on("click", () => openPhotoLightbox(cluster, 0));
     marker.addTo(photoLayer);
   });
 
@@ -332,54 +404,11 @@ function drawTrack(points) {
   el.count.textContent = `${points.length.toLocaleString("de-DE")} Punkte`;
 }
 
-async function uploadPhotos(toernId) {
-  const files = el.photoFiles?.files;
-  if (!files?.length) {
-    showToast("Bitte Dateien auswählen.");
-    return;
-  }
-  const form = new FormData();
-  form.append("toern", String(toernId));
-  const title = document.getElementById("photoTitle")?.value?.trim();
-  const lat = document.getElementById("photoLat")?.value?.trim();
-  const lon = document.getElementById("photoLon")?.value?.trim();
-  if (title) form.append("title", title);
-  if (lat && lon) {
-    form.append("lat", lat);
-    form.append("lon", lon);
-  }
-  for (const file of files) {
-    form.append("photos", file);
-  }
-
-  el.photoUploadBtn.disabled = true;
-  try {
-    const res = await fetch("/api/photos/upload", { method: "POST", body: form });
-    let data = {};
-    try {
-      data = await res.json();
-    } catch {
-      if (res.status === 413) {
-        throw new Error("Upload zu groß – weniger Dateien auf einmal wählen.");
-      }
-      throw new Error(`Upload fehlgeschlagen (HTTP ${res.status}).`);
-    }
-    if (!res.ok) {
-      throw new Error(data.error || "Upload fehlgeschlagen.");
-    }
-    if (data.errors?.length) {
-      showToast(`${data.count} gespeichert, ${data.errors.length} Fehler`);
-    } else {
-      showToast(`${data.count} Foto(s) hochgeladen.`);
-    }
-    el.photoUpload?.reset();
-    await loadPhotos(toernId);
-    fitMapBounds();
-  } catch (err) {
-    showToast(err.message || "Upload fehlgeschlagen");
-  } finally {
-    el.photoUploadBtn.disabled = false;
-  }
+function syncManagePhotosLink(toernId) {
+  if (!el.managePhotosLink) return;
+  el.managePhotosLink.href = Number.isFinite(toernId)
+    ? `/photos?toern=${toernId}`
+    : "/photos";
 }
 
 async function loadPhotos(toernId) {
@@ -453,12 +482,14 @@ async function loadTrack(toernId, toerns) {
   const data = await res.json();
   const toern = toerns.find((t) => t.id === Number(toernId));
   renderMeta(toern);
+  syncManagePhotosLink(Number(toernId));
   drawTrack(data.points);
   await loadPhotos(toernId);
 }
 
 async function main() {
   renderLegend();
+  initPhotoLightbox();
   el.fit.addEventListener("click", () => fitMapBounds());
   el.showPhotos?.addEventListener("change", async () => {
     const id = Number(el.select.value);
@@ -467,24 +498,20 @@ async function main() {
     fitMapBounds();
   });
 
-  el.photoUpload?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const id = Number(el.select.value);
-    if (!Number.isFinite(id)) {
-      showToast("Bitte zuerst einen Törn wählen.");
-      return;
-    }
-    await uploadPhotos(id);
-  });
-
   try {
     const toerns = await loadToerns();
     if (!toerns.length) return;
 
     const first = toerns.find((t) => t.pointsWithCoords > 0);
-    if (first) {
-      el.select.value = String(first.id);
-      await loadTrack(first.id, toerns);
+    const params = new URLSearchParams(window.location.search);
+    const toernFromUrl = params.get("toern");
+    const pick =
+      toernFromUrl && toerns.some((t) => String(t.id) === toernFromUrl)
+        ? toerns.find((t) => String(t.id) === toernFromUrl)
+        : first;
+    if (pick) {
+      el.select.value = String(pick.id);
+      await loadTrack(pick.id, toerns);
     }
 
     el.select.addEventListener("change", async () => {

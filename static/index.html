@@ -38,30 +38,9 @@
         <span>Fotos auf der Karte</span>
       </label>
       <p id="photoInfo" class="hint photo-info">Fotos: —</p>
-
-      <form id="photoUpload" class="upload-form">
-        <h2>Fotos hochladen</h2>
-        <p class="hint upload-hint">GPS aus EXIF oder Koordinaten unten. Ohne beides: Zuordnung per Aufnahmezeit zum Track.</p>
-        <label class="field">
-          <span>Dateien</span>
-          <input type="file" id="photoFiles" name="photos" accept="image/*" multiple required />
-        </label>
-        <label class="field">
-          <span>Titel (optional)</span>
-          <input type="text" id="photoTitle" name="title" placeholder="z. B. Ankerplatz Punat" />
-        </label>
-        <div class="coord-row">
-          <label class="field">
-            <span>LAT (optional)</span>
-            <input type="text" id="photoLat" name="lat" inputmode="decimal" placeholder="45.002" />
-          </label>
-          <label class="field">
-            <span>LON (optional)</span>
-            <input type="text" id="photoLon" name="lon" inputmode="decimal" placeholder="14.607" />
-          </label>
-        </div>
-        <button type="submit" class="btn btn-primary" id="photoUploadBtn">Hochladen</button>
-      </form>
+      <p class="manage-link-wrap">
+        <a href="/photos" class="btn btn-link" id="managePhotosLink">Fotos verwalten →</a>
+      </p>
 
       <footer class="sidebar-foot">
         <span id="pointCount">—</span>
@@ -73,6 +52,19 @@
       <div id="map"></div>
       <div id="hoverCard" class="hover-card" hidden></div>
       <div id="toast" class="toast" hidden></div>
+
+      <div id="photoLightbox" class="photo-lightbox" hidden aria-modal="true" role="dialog">
+        <button type="button" class="photo-lightbox-close" id="photoLightboxClose" aria-label="Schließen">×</button>
+        <button type="button" class="photo-lightbox-nav photo-lightbox-prev" id="photoLightboxPrev" aria-label="Vorheriges Bild">‹</button>
+        <button type="button" class="photo-lightbox-nav photo-lightbox-next" id="photoLightboxNext" aria-label="Nächstes Bild">›</button>
+        <div class="photo-lightbox-stage">
+          <img id="photoLightboxMain" alt="" />
+          <p id="photoLightboxCaption" class="photo-lightbox-caption"></p>
+        </div>
+        <div class="photo-lightbox-strip-wrap">
+          <div id="photoLightboxStrip" class="photo-lightbox-strip"></div>
+        </div>
+      </div>
     </main>
   </div>
 
