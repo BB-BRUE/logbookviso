@@ -30,6 +30,7 @@ from logbook_store import (
     validate_logbook_file,
 )
 from photos_store import (
+    VIDEO_EXT,
     clusters_to_json,
     cluster_photos,
     delete_photo,
@@ -506,6 +507,20 @@ def api_photos_file(photo_id: int, user):
         return denied
 
     if request.args.get("thumb") == "1":
+        if path.suffix.lower() in VIDEO_EXT:
+            import io
+
+            from flask import send_file
+
+            svg = (
+                '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240">'
+                '<rect width="320" height="240" fill="#0a1c26"/>'
+                '<circle cx="160" cy="120" r="44" fill="none" stroke="#e8f2f4" stroke-width="4"/>'
+                '<polygon points="148,98 148,142 188,120" fill="#2f9e8a"/>'
+                "</svg>"
+            )
+            return send_file(io.BytesIO(svg.encode("utf-8")), mimetype="image/svg+xml")
+
         try:
             from PIL import Image
             import io

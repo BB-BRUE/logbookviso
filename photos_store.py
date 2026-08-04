@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import sqlite3
 import time
 import uuid
@@ -11,7 +12,8 @@ from pathlib import Path
 from typing import Any
 
 CLUSTER_RADIUS_M = 250
-ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
+ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".mp4", ".mov", ".m4v"}
+VIDEO_EXT = {".mp4", ".mov", ".m4v"}
 
 
 @dataclass
@@ -93,7 +95,7 @@ def _dms_to_deg(values: Any, ref: str) -> float | None:
 
 
 def extract_exif(file_path: Path) -> tuple[float | None, float | None, int | None]:
-    """Read GPS and capture time from EXIF when available."""
+    """Read GPS and capture time from EXIF when available (images)."""
     try:
         from PIL import Image
         from PIL.ExifTags import TAGS
@@ -134,6 +136,93 @@ def extract_exif(file_path: Path) -> tuple[float | None, float | None, int | Non
             return lat, lon, taken_ms
     except OSError:
         return None, None, None
+
+
+def _parse_iso6709(text: str) -> tuple[float | None, float | None]:
+    """GPS aus ISO-6709-String (typisch iPhone/Android in MP4/MOV)."""
+    s = text.strip().strip("\x00")
+    if not s:
+        return None, None
+    m = re.search(r"([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)", s)
+    if not m:
+        return None, None
+    try:
+        return float(m.group(1)), float(m.group(2))
+    except ValueError:
+        return None, None
+
+
+def _parse_mp4_date(raw: str) -> int | None:
+    from datetime import datetime, timezone
+
+    s = str(raw).strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    m = re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})([+-]\d{2})(\d{2})$", s)
+    if m:
+        s = m.group(1) + m.group(2) + ":" + m.group(3)
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp() * 1000)
+    except ValueError:
+        return None
+
+
+def extract_video_metadata(file_path: Path) -> tuple[float | None, float | None, int | None]:
+    """GPS/Zeit aus QuickTime-Metadaten (MP4/MOV), z. B. location.ISO6709."""
+    try:
+        from mutagen.mp4 import MP4
+    except ImportError:
+        return None, None, None
+
+    try:
+        mp4 = MP4(file_path)
+    except Exception:
+        return None, None, None
+
+    tags = mp4.tags
+    if not tags:
+        return None, None, None
+
+    lat = lon = None
+    for key, values in tags.items():
+        key_l = key.lower()
+        if "location" not in key_l and key not in ("\xa9xyz",):
+            continue
+        items = values if isinstance(values, list) else [values]
+        for val in items:
+            if isinstance(val, bytes):
+                val = val.decode("utf-8", errors="replace")
+            la, lo = _parse_iso6709(str(val))
+            if la is not None and lo is not None:
+                lat, lon = la, lo
+                break
+        if lat is not None:
+            break
+
+    taken_ms = None
+    if "\xa9day" in tags:
+        raw = tags["\xa9day"][0]
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        taken_ms = _parse_mp4_date(str(raw))
+
+    return lat, lon, taken_ms
+
+
+def extract_media_metadata(file_path: Path) -> tuple[float | None, float | None, int | None]:
+    ext = file_path.suffix.lower()
+    if ext in VIDEO_EXT:
+        return extract_video_metadata(file_path)
+    return extract_exif(file_path)
+
+
+def is_video_filename(name: str) -> bool:
+    return Path(name).suffix.lower() in VIDEO_EXT
 
 
 def nearest_track_point(
@@ -177,7 +266,7 @@ def save_upload(
     dest = toern_dir / stored_name
     dest.write_bytes(file_bytes)
 
-    exif_lat, exif_lon, taken_ms = extract_exif(dest)
+    exif_lat, exif_lon, taken_ms = extract_media_metadata(dest)
     use_lat = lat if lat is not None else exif_lat
     use_lon = lon if lon is not None else exif_lon
 
@@ -188,7 +277,7 @@ def save_upload(
 
     if use_lat is None or use_lon is None:
         dest.unlink(missing_ok=True)
-        return None, "Keine Koordinaten (EXIF/formular) und kein Track-Treffer."
+        return None, "Keine Koordinaten (Metadaten/Formular) und kein Track-Treffer."
 
     now_ms = int(time.time() * 1000)
     photo = _insert_photo_row(
@@ -209,14 +298,14 @@ def _resolve_photo_coords(
     file_path: Path,
     track: list[tuple[int, float, float]] | None,
 ) -> tuple[float | None, float | None, int | None, str | None]:
-    exif_lat, exif_lon, taken_ms = extract_exif(file_path)
+    exif_lat, exif_lon, taken_ms = extract_media_metadata(file_path)
     use_lat, use_lon = exif_lat, exif_lon
     if (use_lat is None or use_lon is None) and taken_ms and track:
         pt = nearest_track_point(taken_ms, track)
         if pt:
             use_lat, use_lon = pt
     if use_lat is None or use_lon is None:
-        return None, None, taken_ms, "Keine Koordinaten (EXIF) und kein Track-Treffer."
+        return None, None, taken_ms, "Keine Koordinaten (Metadaten) und kein Track-Treffer."
     return float(use_lat), float(use_lon), taken_ms, None
 
 
@@ -429,6 +518,7 @@ def photo_manage_dict(
         "uploadedByUserId": p.uploaded_by_user_id,
         "uploadedBy": uploaded_by_username,
         "canEdit": can_edit,
+        "isVideo": is_video_filename(p.filename),
         "thumbUrl": f"/api/photos/file/{p.id}?thumb=1",
         "url": f"/api/photos/file/{p.id}",
     }
@@ -560,6 +650,7 @@ def clusters_to_json(clusters: list[PhotoCluster]) -> list[dict[str, Any]]:
                         "title": p.title or p.original_name,
                         "takenAtMs": p.taken_at_ms,
                         "locationSource": "upload",
+                        "isVideo": is_video_filename(p.filename),
                     }
                     for p in c.photos
                 ],

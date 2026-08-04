@@ -371,7 +371,8 @@ body.lightbox-open {
   box-sizing: border-box;
 }
 
-.photo-lightbox-stage img {
+.photo-lightbox-stage img,
+.photo-lightbox-stage video.photo-lightbox-video {
   max-width: min(96vw, 1600px);
   max-height: calc(100vh - 11rem);
   width: auto;
@@ -379,6 +380,10 @@ body.lightbox-open {
   object-fit: contain;
   border-radius: 6px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+.photo-lightbox-stage video.photo-lightbox-video {
+  background: #000;
 }
 
 .photo-lightbox-caption {

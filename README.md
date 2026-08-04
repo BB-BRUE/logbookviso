@@ -80,12 +80,12 @@ Configs unter `swag/`:
 - Hover-Popup mit Time, COG, LAT, LON, SOG, M/H, LOG, GEO, Freitext und Wetterdaten
 - `recordtype = 1` → größere Punkte (manuelle Einträge)
 - Status-Farben: 0 Segeln, 1 Festgemacht, 2 Motor, 3 Anker
-- **Foto-Upload** pro Törn mit GPS (EXIF oder manuell), Cluster-Marker auf der Karte
+- **Medien-Upload** pro Törn (Bilder + MP4/MOV) mit GPS aus Metadaten oder manuell, Cluster-Marker auf der Karte
 
 ### Fotos
 
 **Verwaltung:** [http://127.0.0.1:5000/photos](http://127.0.0.1:5000/photos) – Upload, Metadaten bearbeiten, Ordner einlesen.
 
-Koordinaten: EXIF-GPS, manuelles LAT/LON, oder Track-Zeit-Matching.
+Koordinaten: EXIF-GPS (Bilder), QuickTime-GPS in MP4/MOV (Smartphone-Videos), manuelles LAT/LON, oder Track-Zeit-Matching.
 
 Upload-Limit: **256 MB** (`MAX_UPLOAD_MB`). Hinter SWAG/Nginx `client_max_body_size` anpassen (siehe `swag/logbookviso.subdomain.conf`).

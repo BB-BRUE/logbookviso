@@ -42,6 +42,7 @@ const lightbox = {
   close: null,
   prev: null,
   next: null,
+  video: null,
 };
 
 const map = L.map("map", {
@@ -231,6 +232,7 @@ function initPhotoLightbox() {
   lightbox.close = document.getElementById("photoLightboxClose");
   lightbox.prev = document.getElementById("photoLightboxPrev");
   lightbox.next = document.getElementById("photoLightboxNext");
+  lightbox.video = document.getElementById("photoLightboxVideo");
   if (!lightbox.root) return;
 
   lightbox.close.addEventListener("click", closePhotoLightbox);
@@ -271,10 +273,26 @@ function setLightboxIndex(index) {
   if (!lightboxPhotos.length) return;
   lightboxIndex = (index + lightboxPhotos.length) % lightboxPhotos.length;
   const p = lightboxPhotos[lightboxIndex];
-  lightbox.main.src = p.url;
-  lightbox.main.alt = p.title || "Foto";
+  const isVideo = Boolean(p.isVideo);
+  if (isVideo && lightbox.video) {
+    lightbox.main.hidden = true;
+    lightbox.main.removeAttribute("src");
+    lightbox.video.hidden = false;
+    lightbox.video.src = p.url;
+    lightbox.video.load();
+  } else {
+    if (lightbox.video) {
+      lightbox.video.hidden = true;
+      lightbox.video.pause();
+      lightbox.video.removeAttribute("src");
+    }
+    lightbox.main.hidden = false;
+    lightbox.main.src = p.url;
+    lightbox.main.alt = p.title || "Foto";
+  }
   const n = lightboxPhotos.length;
-  lightbox.caption.textContent = `${p.title || "Foto"} (${lightboxIndex + 1} / ${n})`;
+  const kind = isVideo ? "Video" : "Foto";
+  lightbox.caption.textContent = `${p.title || kind} (${lightboxIndex + 1} / ${n})`;
   lightbox.prev.hidden = n <= 1;
   lightbox.next.hidden = n <= 1;
   renderLightboxStrip();
@@ -297,6 +315,12 @@ function closePhotoLightbox() {
   lightbox.root.hidden = true;
   document.body.classList.remove("lightbox-open");
   lightbox.main.removeAttribute("src");
+  lightbox.main.hidden = false;
+  if (lightbox.video) {
+    lightbox.video.pause();
+    lightbox.video.removeAttribute("src");
+    lightbox.video.hidden = true;
+  }
   lightboxPhotos = [];
 }
 

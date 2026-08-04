@@ -33,11 +33,11 @@
 
     <section class="manage-upload panel">
       <h2>Hochladen</h2>
-      <p class="hint">GPS aus EXIF, optional LAT/LON für alle Dateien dieses Uploads.</p>
+      <p class="hint">GPS aus EXIF (Bilder) bzw. QuickTime-Metadaten (MP4/MOV), optional LAT/LON für alle Dateien dieses Uploads.</p>
       <form id="photoUpload" class="upload-form manage-upload-form">
         <label class="field">
           <span>Dateien</span>
-          <input type="file" id="photoFiles" accept="image/*" multiple required />
+          <input type="file" id="photoFiles" accept="image/*,video/mp4,video/quicktime,.mp4,.mov,.m4v" multiple required />
         </label>
         <label class="field">
           <span>Titel (optional)</span>
