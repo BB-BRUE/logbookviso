@@ -40,6 +40,8 @@ from photos_store import (
     list_photos,
     list_photos_manage,
     photo_manage_dict,
+    photo_to_map_json,
+    photo_has_coordinates,
     save_upload,
     update_photo,
 )
@@ -296,15 +298,19 @@ def api_photos(toern_id: int, user):
         return denied
     photos = list_photos(SYSTEM_DB, toern_id)
     clusters = cluster_photos(photos)
+    unlocated = [p for p in photos if not photo_has_coordinates(p)]
     return jsonify(
         {
             "toernId": toern_id,
             "meta": {
                 "photoCount": len(photos),
                 "clusterCount": len(clusters),
+                "unlocatedCount": len(unlocated),
             },
             "warnings": [],
             "clusters": clusters_to_json(clusters),
+            "unlocated": [photo_to_map_json(p) for p in unlocated],
+            "slideshow": [photo_to_map_json(p) for p in photos],
         }
     )
 
@@ -436,17 +442,21 @@ def api_photos_update(photo_id: int, user):
         return denied
     body = request.get_json(silent=True) or {}
     title = body.get("title")
-    lat = body.get("lat")
-    lon = body.get("lon")
+    clear_coordinates = bool(body.get("clearCoordinates"))
+    lat = body.get("lat") if "lat" in body else None
+    lon = body.get("lon") if "lon" in body else None
 
-    if lat is not None or lon is not None:
-        if lat is None or lon is None:
-            return jsonify({"error": "LAT und LON gemeinsam angeben."}), 400
+    if not clear_coordinates and (lat is not None or lon is not None):
+        if lat in (None, "") or lon in (None, ""):
+            return jsonify({"error": "LAT und LON gemeinsam angeben oder leer lassen."}), 400
         try:
             lat = float(lat)
             lon = float(lon)
         except (TypeError, ValueError):
             return jsonify({"error": "Ungültige Koordinaten."}), 400
+    elif lat in ("",) or lon in ("",):
+        clear_coordinates = True
+        lat = lon = None
 
     if title is not None:
         title = str(title).strip()
@@ -455,8 +465,9 @@ def api_photos_update(photo_id: int, user):
         SYSTEM_DB,
         photo_id,
         title=title if "title" in body else None,
-        lat=lat if "lat" in body else None,
-        lon=lon if "lon" in body else None,
+        lat=lat if lat is not None and not clear_coordinates else None,
+        lon=lon if lon is not None and not clear_coordinates else None,
+        clear_coordinates=clear_coordinates,
     )
     if photo is None:
         return jsonify({"error": "Foto nicht gefunden."}), 404

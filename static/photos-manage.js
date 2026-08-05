@@ -9,11 +9,11 @@ const el = {
   importBtn: document.getElementById("importFolderBtn"),
   refreshExisting: document.getElementById("refreshExisting"),
   folderHint: document.getElementById("folderToernHint"),
-  adminLink: document.getElementById("adminLink"),
-  logoutBtn: document.getElementById("logoutBtn"),
+  filterUnlocated: document.getElementById("filterUnlocatedOnly"),
 };
 
 let toastTimer = null;
+let allPhotos = [];
 
 function showToast(msg) {
   el.toast.hidden = false;
@@ -72,14 +72,22 @@ async function loadToerns() {
   return toerns;
 }
 
+function visiblePhotos() {
+  if (!el.filterUnlocated?.checked) return allPhotos;
+  return allPhotos.filter((p) => !p.hasCoordinates);
+}
+
 function renderPhotoList(photos) {
   if (!photos.length) {
-    el.list.innerHTML = '<p class="hint">Noch keine Fotos für diesen Törn.</p>';
-    el.count.textContent = "0 Fotos";
+    const msg = el.filterUnlocated?.checked
+      ? "Keine Medien ohne Koordinaten für diesen Törn."
+      : "Noch keine Medien für diesen Törn.";
+    el.list.innerHTML = `<p class="hint">${msg}</p>`;
+    el.count.textContent = "0 Medien";
     return;
   }
 
-  el.count.textContent = `${photos.length} Foto${photos.length === 1 ? "" : "s"}`;
+  el.count.textContent = `${photos.length} Medium${photos.length === 1 ? "" : "en"}`;
   el.list.innerHTML = photos
     .map(
       (p) => {
@@ -97,6 +105,7 @@ function renderPhotoList(photos) {
       <div class="photo-manage-fields">
         <p class="photo-manage-meta">${escapeHtml(p.originalName || "")}</p>
         ${ownerHint ? `<p class="hint">${ownerHint}</p>` : ""}
+        ${!p.hasCoordinates ? '<p class="hint photo-manage-no-gps">Ohne Koordinaten</p>' : ""}
         <label class="field">
           <span>Titel</span>
           <input type="text" class="inp-title" value="${escapeHtml(p.title || "")}" placeholder="Titel" ${ro ? "disabled" : ""} />
@@ -104,11 +113,11 @@ function renderPhotoList(photos) {
         <div class="coord-row">
           <label class="field">
             <span>LAT</span>
-            <input type="text" class="inp-lat" value="${p.lat}" inputmode="decimal" ${ro ? "disabled" : ""} />
+            <input type="text" class="inp-lat" value="${p.lat === "" || p.lat == null ? "" : p.lat}" inputmode="decimal" placeholder="optional" ${ro ? "disabled" : ""} />
           </label>
           <label class="field">
             <span>LON</span>
-            <input type="text" class="inp-lon" value="${p.lon}" inputmode="decimal" ${ro ? "disabled" : ""} />
+            <input type="text" class="inp-lon" value="${p.lon === "" || p.lon == null ? "" : p.lon}" inputmode="decimal" placeholder="optional" ${ro ? "disabled" : ""} />
           </label>
         </div>
         <p class="hint photo-manage-time">Aufnahme: ${escapeHtml(fmtTime(p.takenAtMs))}</p>
@@ -128,7 +137,8 @@ async function loadPhotos(toernId) {
   const res = await apiFetch(`/api/photos/list/${toernId}`);
   if (!res.ok) throw new Error("Fotos konnten nicht geladen werden.");
   const data = await res.json();
-  renderPhotoList(data.photos || []);
+  allPhotos = data.photos || [];
+  renderPhotoList(visiblePhotos());
 }
 
 async function savePhoto(card) {
@@ -137,14 +147,27 @@ async function savePhoto(card) {
   const lat = card.querySelector(".inp-lat")?.value?.trim();
   const lon = card.querySelector(".inp-lon")?.value?.trim();
 
+  const body = { title };
+  if (lat === "" && lon === "") {
+    body.clearCoordinates = true;
+  } else if (lat || lon) {
+    if (!lat || !lon) {
+      showToast("LAT und LON gemeinsam ausfüllen oder beide leer lassen.");
+      return;
+    }
+    body.lat = lat;
+    body.lon = lon;
+  }
+
   const res = await apiFetch(`/api/photos/item/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, lat, lon }),
+    body: JSON.stringify(body),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Speichern fehlgeschlagen.");
   showToast("Gespeichert.");
+  await loadPhotos(selectedToernId());
 }
 
 async function deletePhoto(card) {
@@ -155,12 +178,7 @@ async function deletePhoto(card) {
   const res = await apiFetch(`/api/photos/item/${id}`, { method: "DELETE" });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Löschen fehlgeschlagen.");
-  card.remove();
-  const remaining = el.list.querySelectorAll(".photo-manage-card").length;
-  el.count.textContent = `${remaining} Foto${remaining === 1 ? "" : "s"}`;
-  if (!remaining) {
-    el.list.innerHTML = '<p class="hint">Noch keine Fotos für diesen Törn.</p>';
-  }
+  await loadPhotos(selectedToernId());
   showToast("Foto gelöscht.");
 }
 
@@ -285,11 +303,13 @@ el.importBtn?.addEventListener("click", async () => {
   await importFromFolder(id);
 });
 
+el.filterUnlocated?.addEventListener("change", () => {
+  renderPhotoList(visiblePhotos());
+});
+
 async function main() {
   try {
-    const me = await loadCurrentUser();
-    if (me?.isAdmin && el.adminLink) el.adminLink.hidden = false;
-    el.logoutBtn?.addEventListener("click", () => logout());
+    await loadCurrentUser();
   } catch {
     return;
   }

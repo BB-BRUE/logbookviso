@@ -1,7 +1,6 @@
 const createForm = document.getElementById("createUserForm");
 const userList = document.getElementById("userList");
 const newToerns = document.getElementById("newToerns");
-const logoutBtn = document.getElementById("logoutBtn");
 
 let allToerns = [];
 let users = [];
@@ -231,8 +230,6 @@ userList.addEventListener("click", async (e) => {
     await loadUsers();
   }
 });
-
-logoutBtn.addEventListener("click", () => logout());
 
 async function main() {
   const me = await loadCurrentUser();

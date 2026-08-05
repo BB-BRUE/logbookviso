@@ -18,8 +18,6 @@
       </div>
       <div class="header-actions">
         <a href="/" class="btn" id="backToMap">← Zur Karte</a>
-        <a href="/admin" id="adminLink" class="btn" hidden>Admin</a>
-        <button type="button" class="btn" id="logoutBtn">Abmelden</button>
       </div>
     </header>
 
@@ -33,7 +31,7 @@
 
     <section class="manage-upload panel">
       <h2>Hochladen</h2>
-      <p class="hint">GPS aus EXIF (Bilder) bzw. QuickTime-Metadaten (MP4/MOV), optional LAT/LON für alle Dateien dieses Uploads.</p>
+      <p class="hint">GPS optional — ohne Koordinaten möglich (später unter Fotos bearbeiten nachtragen).</p>
       <form id="photoUpload" class="upload-form manage-upload-form">
         <label class="field">
           <span>Dateien</span>
@@ -72,6 +70,10 @@
 
     <section class="panel">
       <h2>Gespeicherte Fotos</h2>
+      <label class="field field-check">
+        <input type="checkbox" id="filterUnlocatedOnly" />
+        <span>Nur Medien ohne Koordinaten</span>
+      </label>
       <div id="photoList" class="photo-manage-list">
         <p class="hint">Törn wählen…</p>
       </div>

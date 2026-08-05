@@ -18,7 +18,6 @@
         <p class="brand-sub">Törn-Tracks aus dem Logbuch</p>
         <p id="userBar" class="user-bar" hidden>
           <span id="userName"></span>
-          <a href="/admin" id="adminLink" class="btn btn-link" hidden>Admin</a>
           <button type="button" id="logoutBtn" class="btn btn-link">Abmelden</button>
         </p>
       </header>
@@ -30,22 +29,37 @@
         </select>
       </label>
 
-      <div id="toernMeta" class="meta" hidden></div>
+      <nav class="sidebar-nav" aria-label="Hauptmenü">
+        <a href="/photos" class="btn btn-nav" id="managePhotosLink">Fotos bearbeiten</a>
+        <a href="/admin" class="btn btn-nav" id="navAdmin" hidden>Benutzer</a>
+        <a href="/admin/logbook" class="btn btn-nav" id="navLogbook" hidden>Logbook importieren</a>
+      </nav>
 
-      <section class="legend">
-        <h2>Status</h2>
-        <ul id="statusLegend"></ul>
-        <p class="hint">Größere Punkte = manuelle Einträge (recordtype 1)</p>
-      </section>
+      <button type="button" class="btn btn-primary" id="slideshowBtn" disabled>Diashow (alle Medien)</button>
 
-      <label class="field field-check">
-        <input type="checkbox" id="showPhotos" checked />
-        <span>Fotos auf der Karte</span>
-      </label>
-      <p id="photoInfo" class="hint photo-info">Fotos: —</p>
-      <p class="manage-link-wrap">
-        <a href="/photos" class="btn btn-link" id="managePhotosLink">Fotos verwalten →</a>
-      </p>
+      <details class="sidebar-accordion" id="sidebarDetails">
+        <summary>Details &amp; Karte</summary>
+        <div class="sidebar-accordion-body">
+          <div id="toernMeta" class="meta" hidden></div>
+
+          <section class="legend">
+            <h2>Status</h2>
+            <ul id="statusLegend"></ul>
+            <p class="hint">Größere Punkte = manuelle Einträge (recordtype 1)</p>
+          </section>
+
+          <label class="field field-check">
+            <input type="checkbox" id="showPhotos" checked />
+            <span>Medien mit GPS auf der Karte</span>
+          </label>
+          <label class="field field-check">
+            <input type="checkbox" id="showUnlocatedOnly" />
+            <span>Nur ohne Koordinaten anzeigen</span>
+          </label>
+          <p id="photoInfo" class="hint photo-info">Medien: —</p>
+          <ul id="unlocatedList" class="unlocated-list" hidden></ul>
+        </div>
+      </details>
 
       <footer class="sidebar-foot">
         <span id="pointCount">—</span>

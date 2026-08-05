@@ -23,10 +23,16 @@ class StoredPhoto:
     filename: str
     original_name: str
     title: str
-    lat: float
-    lon: float
+    lat: float | None
+    lon: float | None
     taken_at_ms: int | None
     uploaded_by_user_id: int | None = None
+
+
+def photo_has_coordinates(p: StoredPhoto) -> bool:
+    if p.lat is None or p.lon is None:
+        return False
+    return abs(p.lat) > 0.01 and abs(p.lon) > 0.01
 
 
 @dataclass
@@ -61,8 +67,8 @@ def init_system_db(db_path: Path) -> None:
                 filename TEXT NOT NULL,
                 original_name TEXT,
                 title TEXT,
-                lat REAL NOT NULL,
-                lon REAL NOT NULL,
+                lat REAL,
+                lon REAL,
                 taken_at_ms INTEGER,
                 created_at_ms INTEGER NOT NULL,
                 uploaded_by_user_id INTEGER
@@ -72,8 +78,40 @@ def init_system_db(db_path: Path) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_photos_toern ON photos(toern)"
         )
+        _migrate_photos_nullable_coords(conn)
+        conn.commit()
     init_logbook_schema(db_path)
     _init_users_schema(db_path)
+
+
+def _migrate_photos_nullable_coords(conn: sqlite3.Connection) -> None:
+    cols = conn.execute("PRAGMA table_info(photos)").fetchall()
+    lat_col = next((c for c in cols if c[1] == "lat"), None)
+    if lat_col is None or lat_col[3] == 0:
+        return
+    conn.executescript(
+        """
+        CREATE TABLE photos_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            toern INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            original_name TEXT,
+            title TEXT,
+            lat REAL,
+            lon REAL,
+            taken_at_ms INTEGER,
+            created_at_ms INTEGER NOT NULL,
+            uploaded_by_user_id INTEGER
+        );
+        INSERT INTO photos_new
+        SELECT id, toern, filename, original_name, title, lat, lon, taken_at_ms,
+               created_at_ms, uploaded_by_user_id
+        FROM photos;
+        DROP TABLE photos;
+        ALTER TABLE photos_new RENAME TO photos;
+        CREATE INDEX IF NOT EXISTS idx_photos_toern ON photos(toern);
+        """
+    )
 
 
 def get_photos_conn(db_path: Path) -> sqlite3.Connection:
@@ -276,18 +314,16 @@ def save_upload(
             use_lat, use_lon = pt
 
     if use_lat is None or use_lon is None:
-        dest.unlink(missing_ok=True)
-        return None, "Keine Koordinaten (Metadaten/Formular) und kein Track-Treffer."
+        use_lat, use_lon = None, None
 
-    now_ms = int(time.time() * 1000)
     photo = _insert_photo_row(
         db_path,
         toern,
         stored_name,
         original_name,
         title,
-        float(use_lat),
-        float(use_lon),
+        float(use_lat) if use_lat is not None else None,
+        float(use_lon) if use_lon is not None else None,
         taken_ms,
         uploaded_by_user_id,
     )
@@ -297,16 +333,16 @@ def save_upload(
 def _resolve_photo_coords(
     file_path: Path,
     track: list[tuple[int, float, float]] | None,
-) -> tuple[float | None, float | None, int | None, str | None]:
+) -> tuple[float | None, float | None, int | None]:
     exif_lat, exif_lon, taken_ms = extract_media_metadata(file_path)
     use_lat, use_lon = exif_lat, exif_lon
     if (use_lat is None or use_lon is None) and taken_ms and track:
         pt = nearest_track_point(taken_ms, track)
         if pt:
             use_lat, use_lon = pt
-    if use_lat is None or use_lon is None:
-        return None, None, taken_ms, "Keine Koordinaten (Metadaten) und kein Track-Treffer."
-    return float(use_lat), float(use_lon), taken_ms, None
+    if use_lat is not None and use_lon is not None:
+        return float(use_lat), float(use_lon), taken_ms
+    return None, None, taken_ms
 
 
 def _insert_photo_row(
@@ -315,8 +351,8 @@ def _insert_photo_row(
     filename: str,
     original_name: str,
     title: str,
-    lat: float,
-    lon: float,
+    lat: float | None,
+    lon: float | None,
     taken_at_ms: int | None,
     uploaded_by_user_id: int | None = None,
 ) -> StoredPhoto:
@@ -403,10 +439,7 @@ def import_photos_from_folder(
         if file_path.name in known_by_filename:
             if not refresh_existing:
                 continue
-            lat, lon, taken_ms, err = _resolve_photo_coords(file_path, track)
-            if err:
-                warnings.append(f"{file_path.name}: {err}")
-                continue
+            lat, lon, taken_ms = _resolve_photo_coords(file_path, track)
             row = known_by_filename[file_path.name]
             with get_photos_conn(db_path) as conn:
                 conn.execute(
@@ -431,10 +464,11 @@ def import_photos_from_folder(
             )
             continue
 
-        lat, lon, taken_ms, err = _resolve_photo_coords(file_path, track)
-        if err:
-            warnings.append(f"{file_path.name}: {err}")
-            continue
+        lat, lon, taken_ms = _resolve_photo_coords(file_path, track)
+        if lat is None or lon is None:
+            warnings.append(
+                f"{file_path.name}: ohne Koordinaten importiert (später unter Fotos bearbeiten)."
+            )
 
         title = file_path.stem
         photo = _insert_photo_row(
@@ -492,11 +526,23 @@ def _row_to_photo(r: sqlite3.Row) -> StoredPhoto:
         filename=r["filename"],
         original_name=r["original_name"] or "",
         title=r["title"] or "",
-        lat=float(r["lat"]),
-        lon=float(r["lon"]),
+        lat=float(r["lat"]) if r["lat"] is not None else None,
+        lon=float(r["lon"]) if r["lon"] is not None else None,
         taken_at_ms=r["taken_at_ms"],
         uploaded_by_user_id=uploaded,
     )
+
+
+def photo_to_map_json(p: StoredPhoto) -> dict[str, Any]:
+    return {
+        "id": p.id,
+        "url": f"/api/photos/file/{p.id}",
+        "thumbUrl": f"/api/photos/file/{p.id}?thumb=1",
+        "title": p.title or p.original_name,
+        "takenAtMs": p.taken_at_ms,
+        "hasCoordinates": photo_has_coordinates(p),
+        "isVideo": is_video_filename(p.filename),
+    }
 
 
 def photo_manage_dict(
@@ -511,8 +557,9 @@ def photo_manage_dict(
         "toern": p.toern,
         "title": p.title,
         "originalName": p.original_name,
-        "lat": p.lat,
-        "lon": p.lon,
+        "lat": p.lat if p.lat is not None else "",
+        "lon": p.lon if p.lon is not None else "",
+        "hasCoordinates": photo_has_coordinates(p),
         "takenAtMs": p.taken_at_ms,
         "createdAtMs": created_at_ms,
         "uploadedByUserId": p.uploaded_by_user_id,
@@ -546,18 +593,23 @@ def update_photo(
     title: str | None = None,
     lat: float | None = None,
     lon: float | None = None,
+    clear_coordinates: bool = False,
 ) -> StoredPhoto | None:
     fields: list[str] = []
     values: list[Any] = []
     if title is not None:
         fields.append("title = ?")
         values.append(title)
-    if lat is not None:
-        fields.append("lat = ?")
-        values.append(float(lat))
-    if lon is not None:
-        fields.append("lon = ?")
-        values.append(float(lon))
+    if clear_coordinates:
+        fields.append("lat = NULL")
+        fields.append("lon = NULL")
+    else:
+        if lat is not None:
+            fields.append("lat = ?")
+            values.append(float(lat))
+        if lon is not None:
+            fields.append("lon = ?")
+            values.append(float(lon))
     if not fields:
         photo, _ = get_photo(db_path, Path("."), photo_id)
         return photo
@@ -609,6 +661,7 @@ def get_photo(db_path: Path, photos_dir: Path, photo_id: int) -> tuple[StoredPho
 
 
 def cluster_photos(photos: list[StoredPhoto], radius_m: float = CLUSTER_RADIUS_M) -> list[PhotoCluster]:
+    photos = [p for p in photos if photo_has_coordinates(p)]
     clusters: list[PhotoCluster] = []
     for photo in photos:
         target: PhotoCluster | None = None
@@ -642,18 +695,7 @@ def clusters_to_json(clusters: list[PhotoCluster]) -> list[dict[str, Any]]:
                 "lat": c.lat,
                 "lon": c.lon,
                 "count": len(c.photos),
-                "photos": [
-                    {
-                        "id": p.id,
-                        "url": f"/api/photos/file/{p.id}",
-                        "thumbUrl": f"/api/photos/file/{p.id}?thumb=1",
-                        "title": p.title or p.original_name,
-                        "takenAtMs": p.taken_at_ms,
-                        "locationSource": "upload",
-                        "isVideo": is_video_filename(p.filename),
-                    }
-                    for p in c.photos
-                ],
+                "photos": [photo_to_map_json(p) for p in c.photos],
             }
         )
     return out

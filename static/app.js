@@ -17,9 +17,13 @@ const el = {
   showPhotos: document.getElementById("showPhotos"),
   photoInfo: document.getElementById("photoInfo"),
   managePhotosLink: document.getElementById("managePhotosLink"),
+  navAdmin: document.getElementById("navAdmin"),
+  navLogbook: document.getElementById("navLogbook"),
+  slideshowBtn: document.getElementById("slideshowBtn"),
+  showUnlocatedOnly: document.getElementById("showUnlocatedOnly"),
+  unlocatedList: document.getElementById("unlocatedList"),
   userBar: document.getElementById("userBar"),
   userName: document.getElementById("userName"),
-  adminLink: document.getElementById("adminLink"),
   logoutBtn: document.getElementById("logoutBtn"),
 };
 
@@ -33,6 +37,8 @@ let lightboxIndex = 0;
 let hoverHideTimer = null;
 let activeTrackMarker = null;
 let activeMarkerStyle = null;
+let lastPhotoPayload = null;
+let currentToernId = null;
 
 const lightbox = {
   root: null,
@@ -333,6 +339,65 @@ function clearPhotos() {
   if (el.photoInfo) el.photoInfo.textContent = "Fotos: —";
 }
 
+function openPhotoSlideshow(photos, startIndex = 0) {
+  if (!photos?.length) {
+    showToast("Keine Medien für diesen Törn.");
+    return;
+  }
+  openPhotoLightbox({ photos }, startIndex);
+}
+
+function renderUnlocatedList(items) {
+  if (!el.unlocatedList) return;
+  if (!items.length) {
+    el.unlocatedList.hidden = true;
+    el.unlocatedList.innerHTML = "";
+    return;
+  }
+  el.unlocatedList.hidden = false;
+  el.unlocatedList.innerHTML = items
+    .map(
+      (p, i) =>
+        `<li><button type="button" class="unlocated-item" data-index="${i}">${escapeHtml(p.title || `#${p.id}`)}</button></li>`
+    )
+    .join("");
+  el.unlocatedList.querySelectorAll(".unlocated-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.index);
+      const list = lastPhotoPayload?.unlocatedOnlyList || [];
+      openPhotoSlideshow(list, idx);
+    });
+  });
+}
+
+function applyPhotoView(data) {
+  lastPhotoPayload = data;
+  const unlocatedOnly = Boolean(el.showUnlocatedOnly?.checked);
+  const clusters = unlocatedOnly ? [] : data.clusters || [];
+  const unlocated = data.unlocated || [];
+
+  if (unlocatedOnly) {
+    drawPhotoClusters([]);
+    lastPhotoPayload.unlocatedOnlyList = unlocated;
+    renderUnlocatedList(unlocated);
+    if (el.photoInfo) {
+      el.photoInfo.textContent = `${unlocated.length} ohne Koordinaten`;
+    }
+  } else {
+    renderUnlocatedList([]);
+    if (el.unlocatedList) el.unlocatedList.hidden = true;
+    drawPhotoClusters(clusters);
+    if (el.photoInfo && data.meta) {
+      const u = data.meta.unlocatedCount || 0;
+      const extra = u ? ` · ${u} ohne GPS` : "";
+      el.photoInfo.textContent = `Medien: ${data.meta.photoCount || 0}${extra}`;
+    }
+  }
+  if (el.slideshowBtn) {
+    el.slideshowBtn.disabled = !(data.slideshow?.length);
+  }
+}
+
 function drawPhotoClusters(clusters) {
   clearPhotos();
   closePhotoLightbox();
@@ -477,27 +542,32 @@ function syncManagePhotosLink(toernId) {
 }
 
 async function loadPhotos(toernId) {
-  if (!el.showPhotos?.checked) {
-    clearPhotos();
-    if (el.photoInfo) el.photoInfo.textContent = "Fotos: ausgeblendet";
-    return;
-  }
+  currentToernId = toernId;
   try {
     const res = await apiFetch(`/api/photos/${toernId}`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Fotos konnten nicht geladen werden.");
+      throw new Error(err.error || "Medien konnten nicht geladen werden.");
     }
     const data = await res.json();
-    drawPhotoClusters(data.clusters || []);
+    lastPhotoPayload = data;
+    if (!el.showPhotos?.checked && !el.showUnlocatedOnly?.checked) {
+      clearPhotos();
+      if (el.photoInfo) el.photoInfo.textContent = "Medien: ausgeblendet (Diashow möglich)";
+      if (el.slideshowBtn) el.slideshowBtn.disabled = !(data.slideshow?.length);
+      return;
+    }
+    applyPhotoView(data);
     if (data.warnings?.length) {
       showToast(data.warnings[0]);
     }
     if (trackBounds || photoBounds) fitMapBounds();
   } catch (err) {
     clearPhotos();
-    if (el.photoInfo) el.photoInfo.textContent = "Fotos: Fehler";
-    showToast(err.message || "Fotos nicht verfügbar");
+    lastPhotoPayload = null;
+    if (el.photoInfo) el.photoInfo.textContent = "Medien: Fehler";
+    if (el.slideshowBtn) el.slideshowBtn.disabled = true;
+    showToast(err.message || "Medien nicht verfügbar");
   }
 }
 
@@ -564,13 +634,26 @@ async function main() {
     await loadPhotos(id);
     fitMapBounds();
   });
+  el.showUnlocatedOnly?.addEventListener("change", async () => {
+    if (lastPhotoPayload) {
+      applyPhotoView(lastPhotoPayload);
+    } else if (currentToernId != null) {
+      await loadPhotos(currentToernId);
+    }
+  });
+  el.slideshowBtn?.addEventListener("click", () => {
+    openPhotoSlideshow(lastPhotoPayload?.slideshow || [], 0);
+  });
 
   try {
     const me = await loadCurrentUser();
     if (me) {
       el.userBar.hidden = false;
       el.userName.textContent = me.username;
-      if (me.isAdmin && el.adminLink) el.adminLink.hidden = false;
+      if (me.isAdmin) {
+        if (el.navAdmin) el.navAdmin.hidden = false;
+        if (el.navLogbook) el.navLogbook.hidden = false;
+      }
     }
     el.logoutBtn?.addEventListener("click", () => logout());
   } catch {

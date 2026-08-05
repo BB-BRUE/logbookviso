@@ -6,7 +6,6 @@ const toernPickList = document.getElementById("toernPickList");
 const importBtn = document.getElementById("importBtn");
 const selectAllBtn = document.getElementById("selectAllBtn");
 const importedList = document.getElementById("importedList");
-const logoutBtn = document.getElementById("logoutBtn");
 
 let uploadId = null;
 
@@ -153,8 +152,6 @@ importBtn.addEventListener("click", async () => {
     importBtn.disabled = false;
   }
 });
-
-logoutBtn.addEventListener("click", () => logout());
 
 async function main() {
   const me = await loadCurrentUser();
