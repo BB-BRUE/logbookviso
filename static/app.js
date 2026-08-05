@@ -5,7 +5,14 @@ const STATUS = {
   3: { label: "Anker", color: "#4a7fcb" },
 };
 
+const MOBILE_SIDEBAR_MQ = window.matchMedia("(max-width: 860px)");
+const SIDEBAR_OPEN_KEY = "logbookviso.sidebarOpen";
+
 const el = {
+  app: document.getElementById("app"),
+  sidebarToggle: document.getElementById("sidebarToggle"),
+  sidebarClose: document.getElementById("sidebarClose"),
+  sidebarBackdrop: document.getElementById("sidebarBackdrop"),
   select: document.getElementById("toernSelect"),
   meta: document.getElementById("toernMeta"),
   legend: document.getElementById("statusLegend"),
@@ -690,4 +697,61 @@ async function main() {
   }
 }
 
+function sidebarIsMobile() {
+  return MOBILE_SIDEBAR_MQ.matches;
+}
+
+function setSidebarOpen(open) {
+  if (!el.app) return;
+  el.app.classList.toggle("sidebar-collapsed", !open);
+  if (el.sidebarToggle) {
+    el.sidebarToggle.hidden = open;
+    el.sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  if (el.sidebarBackdrop) {
+    const showBackdrop = open && sidebarIsMobile();
+    el.sidebarBackdrop.hidden = !showBackdrop;
+    el.sidebarBackdrop.setAttribute("aria-hidden", showBackdrop ? "false" : "true");
+  }
+  if (!sidebarIsMobile()) {
+    try {
+      localStorage.setItem(SIDEBAR_OPEN_KEY, open ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+  window.requestAnimationFrame(() => {
+    map.invalidateSize();
+  });
+}
+
+function readSidebarOpenPreference() {
+  try {
+    return localStorage.getItem(SIDEBAR_OPEN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function initSidebar() {
+  el.sidebarToggle?.addEventListener("click", () => setSidebarOpen(true));
+  el.sidebarClose?.addEventListener("click", () => setSidebarOpen(false));
+  el.sidebarBackdrop?.addEventListener("click", () => setSidebarOpen(false));
+
+  MOBILE_SIDEBAR_MQ.addEventListener("change", () => {
+    if (sidebarIsMobile()) {
+      setSidebarOpen(false);
+    } else {
+      setSidebarOpen(readSidebarOpenPreference());
+    }
+  });
+
+  if (sidebarIsMobile()) {
+    setSidebarOpen(false);
+  } else {
+    setSidebarOpen(readSidebarOpenPreference());
+  }
+}
+
+initSidebar();
 main();

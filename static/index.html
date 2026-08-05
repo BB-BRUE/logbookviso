@@ -11,15 +11,18 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="app">
-    <aside class="sidebar">
-      <header class="brand">
+  <div class="app sidebar-collapsed" id="app">
+    <aside class="sidebar" id="sidebar" aria-label="Seitenmenü">
+      <header class="brand brand-row">
+        <div class="brand-text">
         <p class="brand-mark">Logbook Viso</p>
         <p class="brand-sub">Törn-Tracks aus dem Logbuch</p>
         <p id="userBar" class="user-bar" hidden>
           <span id="userName"></span>
           <button type="button" id="logoutBtn" class="btn btn-link">Abmelden</button>
         </p>
+        </div>
+        <button type="button" class="btn btn-icon sidebar-close" id="sidebarClose" aria-label="Menü schließen" title="Menü schließen">‹</button>
       </header>
 
       <label class="field">
@@ -68,6 +71,8 @@
     </aside>
 
     <main class="map-wrap">
+      <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Menü öffnen" aria-controls="sidebar" aria-expanded="false" title="Menü">☰</button>
+      <div id="sidebarBackdrop" class="sidebar-backdrop" hidden aria-hidden="true"></div>
       <div id="map"></div>
       <div id="hoverCard" class="hover-card" hidden></div>
       <div id="toast" class="toast" hidden></div>
