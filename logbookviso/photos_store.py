@@ -9,7 +9,9 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+from logbookviso import db
 
 CLUSTER_RADIUS_M = 250
 ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".mp4", ".mov", ".m4v"}
@@ -58,7 +60,7 @@ from logbookviso.users_store import init_app_db as _init_users_schema
 
 def init_system_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    with db.connect(db_path) as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS photos (
@@ -116,9 +118,7 @@ def _migrate_photos_nullable_coords(conn: sqlite3.Connection) -> None:
 
 def get_photos_conn(db_path: Path) -> sqlite3.Connection:
     init_system_db(db_path)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return db.connect(db_path, row_factory=True)
 
 
 def _dms_to_deg(values: Any, ref: str) -> float | None:
@@ -136,7 +136,7 @@ def extract_exif(file_path: Path) -> tuple[float | None, float | None, int | Non
     """Read GPS and capture time from EXIF when available (images)."""
     try:
         from PIL import Image
-        from PIL.ExifTags import TAGS
+        from PIL.ExifTags import IFD
     except ImportError:
         return None, None, None
 
@@ -146,20 +146,33 @@ def extract_exif(file_path: Path) -> tuple[float | None, float | None, int | Non
             if not exif:
                 return None, None, None
 
-            gps_info: dict[int, Any] = {}
-            taken_ms = None
-            for tag_id, value in exif.items():
-                tag = TAGS.get(tag_id, tag_id)
-                if tag == "GPSInfo" and isinstance(value, dict):
-                    gps_info = value
-                elif tag in ("DateTimeOriginal", "DateTime") and taken_ms is None:
-                    try:
-                        from datetime import datetime
+            # GPS-Koordinaten und die Original-Aufnahmezeit liegen in eigenen,
+            # per Zeiger referenzierten Sub-IFDs. exif.items()/exif.get()
+            # liefert dafür nur den rohen Offset (int), nicht die Werte –
+            # ohne get_ifd() bleiben GPSInfo/DateTimeOriginal immer leer.
+            try:
+                gps_info = exif.get_ifd(IFD.GPSInfo)
+            except (KeyError, ValueError, SyntaxError):
+                gps_info = {}
+            try:
+                exif_ifd = exif.get_ifd(IFD.Exif)
+            except (KeyError, ValueError, SyntaxError):
+                exif_ifd = {}
 
-                        dt = datetime.strptime(str(value), "%Y:%m:%d %H:%M:%S")
-                        taken_ms = int(dt.timestamp() * 1000)
-                    except ValueError:
-                        pass
+            raw_dt = (
+                exif_ifd.get(0x9003)  # DateTimeOriginal
+                or exif_ifd.get(0x9004)  # DateTimeDigitized
+                or exif.get(0x0132)  # DateTime (IFD0-Fallback)
+            )
+            taken_ms = None
+            if raw_dt:
+                try:
+                    from datetime import datetime
+
+                    dt = datetime.strptime(str(raw_dt), "%Y:%m:%d %H:%M:%S")
+                    taken_ms = int(dt.timestamp() * 1000)
+                except ValueError:
+                    pass
 
             lat = lon = None
             if gps_info:
@@ -286,14 +299,23 @@ def save_upload(
     db_path: Path,
     photos_dir: Path,
     toern: int,
-    file_bytes: bytes,
     original_name: str,
     lat: float | None,
     lon: float | None,
     title: str = "",
     track: list[tuple[int, float, float]] | None = None,
     uploaded_by_user_id: int | None = None,
+    *,
+    save_to: Callable[[Path], None],
 ) -> tuple[StoredPhoto | None, str | None]:
+    """Speichert einen Upload-Stream direkt auf die Platte.
+
+    ``save_to`` schreibt die Datei an den übergebenen Zielpfad (z. B.
+    ``werkzeug.datastructures.FileStorage.save``) statt den kompletten Inhalt
+    vorher als ``bytes`` im Speicher zu halten – wichtig bei großen Videos
+    und mehreren gleichzeitigen Uploads (MAX_UPLOAD_MB kann bis zu 256 MB
+    pro Request sein).
+    """
     ext = Path(original_name).suffix.lower()
     if ext not in ALLOWED_EXT:
         return None, f"Dateityp nicht erlaubt: {ext}"
@@ -302,7 +324,11 @@ def save_upload(
     toern_dir.mkdir(parents=True, exist_ok=True)
     stored_name = f"{uuid.uuid4().hex}{ext}"
     dest = toern_dir / stored_name
-    dest.write_bytes(file_bytes)
+    save_to(dest)
+
+    if not dest.is_file() or dest.stat().st_size == 0:
+        dest.unlink(missing_ok=True)
+        return None, "Datei ist leer."
 
     exif_lat, exif_lon, taken_ms = extract_media_metadata(dest)
     use_lat = lat if lat is not None else exif_lat

@@ -75,6 +75,10 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 app.config["SECRET_KEY"] = settings.secret_key
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Nur "1" setzen, wenn die App tatsächlich per HTTPS erreichbar ist (z. B.
+# hinter SWAG/Nginx) – sonst schickt der Browser das Session-Cookie gar
+# nicht mehr mit (Login würde bei reinem HTTP fehlschlagen).
+app.config["SESSION_COOKIE_SECURE"] = settings.session_cookie_secure
 
 ensure_bootstrap_admin(SYSTEM_DB, settings.init_admin_user, settings.init_admin_password)
 init_system_db(SYSTEM_DB)
@@ -306,21 +310,17 @@ def api_photos_upload(user):
     for f in files:
         if not f.filename:
             continue
-        data = f.read()
-        if not data:
-            errors.append(f"{f.filename}: leer")
-            continue
         photo, err = save_upload(
             SYSTEM_DB,
             PHOTOS_DIR,
             toern,
-            data,
             f.filename,
             lat,
             lon,
             title,
             track,
             uploaded_by_user_id=user.id,
+            save_to=f.save,
         )
         if err:
             errors.append(f"{f.filename}: {err}")

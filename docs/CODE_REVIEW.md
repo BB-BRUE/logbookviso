@@ -70,6 +70,7 @@ docs/                 # CODE_REVIEW.md, ARCHITECTURE.md
 ## Checkliste nach Deploy
 
 - [ ] `SECRET_KEY` gesetzt
+- [ ] `SESSION_COOKIE_SECURE=1` gesetzt (nur bei HTTPS-Erreichbarkeit, z. B. hinter SWAG)
 - [ ] Admin-Passwort geändert
 - [ ] Volume `./data` persistent
 - [ ] SWAG/Nginx Upload-Limit ≥ 256 MB (falls große Videos)

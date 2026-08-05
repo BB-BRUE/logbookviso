@@ -20,6 +20,7 @@ class Settings:
     static_dir: Path
     max_upload_mb: int
     secret_key: str
+    session_cookie_secure: bool
     init_admin_user: str
     init_admin_password: str
 
@@ -38,6 +39,7 @@ class Settings:
             static_dir=ROOT / "static",
             max_upload_mb=int(os.environ.get("MAX_UPLOAD_MB", "256")),
             secret_key=os.environ.get("SECRET_KEY", "dev-change-me-in-production"),
+            session_cookie_secure=os.environ.get("SESSION_COOKIE_SECURE", "0") == "1",
             init_admin_user=os.environ.get("INIT_ADMIN_USER", "admin"),
             init_admin_password=os.environ.get("INIT_ADMIN_PASSWORD", "admin"),
         )

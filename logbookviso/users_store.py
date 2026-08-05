@@ -9,6 +9,8 @@ from typing import Any
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from logbookviso import db
+
 ROLE_ADMIN = "admin"
 ROLE_USER = "user"
 
@@ -26,7 +28,7 @@ def init_app_db(db_path) -> None:
 
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as conn:
+    with db.connect(path) as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -51,12 +53,19 @@ def init_app_db(db_path) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_user_toerns_user ON user_toerns(user_id)"
         )
+        # Aufräumen von Altlasten: vor dem Fix (fehlendes PRAGMA foreign_keys)
+        # konnten beim Löschen eines Users verwaiste user_toerns-Zeilen zurückbleiben.
+        conn.execute(
+            "DELETE FROM user_toerns WHERE user_id NOT IN (SELECT id FROM users)"
+        )
 
 
 def get_conn(db_path) -> sqlite3.Connection:
     init_app_db(db_path)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = db.connect(db_path, row_factory=True)
+    # Nötig, damit "user_toerns"-Zeilen per ON DELETE CASCADE mitgelöscht
+    # werden, wenn ein Benutzer gelöscht wird (siehe delete_user()).
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 

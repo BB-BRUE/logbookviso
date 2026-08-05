@@ -7,13 +7,15 @@ import time
 from pathlib import Path
 from typing import Any
 
+from logbookviso import db
+
 REQUIRED_LOGBOOK_TABLES = ("Toernrecord", "Logrecord")
 
 
 def init_logbook_schema(db_path: Path | str) -> None:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as conn:
+    with db.connect(path) as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS toerns (
@@ -66,8 +68,7 @@ def init_logbook_schema(db_path: Path | str) -> None:
 
 def open_app_db(db_path: Path | str) -> sqlite3.Connection:
     init_logbook_schema(db_path)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = db.connect(db_path, row_factory=True)
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 

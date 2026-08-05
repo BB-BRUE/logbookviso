@@ -75,6 +75,7 @@ volumes:
 | `LOGBOOK_UPLOAD_DIR` | `<DB-Ordner>/logbook_uploads` | Temporäre Viso-Uploads |
 | `MAX_UPLOAD_MB` | `256` | Max. Request-Größe (Upload) |
 | `SECRET_KEY` | `dev-change-me-in-production` | Flask-Session (in Produktion setzen!) |
+| `SESSION_COOKIE_SECURE` | `0` | `1` setzen, wenn nur per HTTPS erreichbar (z. B. hinter SWAG) |
 | `INIT_ADMIN_USER` | `admin` | Erster Admin, wenn keine User existieren |
 | `INIT_ADMIN_PASSWORD` | `admin` | Passwort für Bootstrap-Admin |
 | `HOST` / `PORT` | `127.0.0.1` / `5000` | Nur für `python server.py` |
