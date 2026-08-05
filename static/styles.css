@@ -759,6 +759,7 @@ body.lightbox-open {
 .photo-manage-list {
   display: grid;
   gap: 0.85rem;
+  margin-top: 2.5rem;
 }
 
 .photo-manage-card {
