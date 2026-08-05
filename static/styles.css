@@ -649,16 +649,35 @@ body.lightbox-open {
   color: var(--accent) !important;
 }
 
-.track-dot {
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-  transition: transform 0.15s ease;
+.track-arrow-wrap {
+  background: transparent !important;
+  border: none !important;
 }
 
-.track-dot.is-major {
-  border-width: 2.5px;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18), 0 2px 6px rgba(0, 0, 0, 0.4);
+.track-arrow {
+  display: grid;
+  place-items: center;
+  transform-origin: center center;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.track-arrow svg {
+  display: block;
+  transform: rotate(var(--course, 0deg));
+  transform-origin: center center;
+  overflow: visible;
+}
+
+.track-arrow-wrap.is-major .track-arrow {
+  filter: drop-shadow(0 0 0 2px rgba(255, 255, 255, 0.2))
+    drop-shadow(0 2px 5px rgba(0, 0, 0, 0.5));
+}
+
+.track-arrow-wrap.is-active .track-arrow {
+  transform: scale(1.35);
+  filter: drop-shadow(0 0 0 2px rgba(255, 255, 255, 0.85))
+    drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55));
 }
 
 @keyframes slideIn {

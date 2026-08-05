@@ -42,7 +42,6 @@ let lightboxPhotos = [];
 let lightboxIndex = 0;
 let hoverHideTimer = null;
 let activeTrackMarker = null;
-let activeMarkerStyle = null;
 let lastPhotoPayload = null;
 let currentToernId = null;
 
@@ -195,10 +194,10 @@ function clearHoverHideTimer() {
 }
 
 function resetActiveTrackMarker() {
-  if (activeTrackMarker && activeMarkerStyle) {
-    activeTrackMarker.setStyle(activeMarkerStyle);
+  if (activeTrackMarker) {
+    const node = activeTrackMarker.getElement();
+    if (node) node.classList.remove("is-active");
     activeTrackMarker = null;
-    activeMarkerStyle = null;
   }
 }
 
@@ -213,16 +212,51 @@ function scheduleHideHoverCard() {
   hoverHideTimer = setTimeout(hideHoverCard, 280);
 }
 
-function highlightTrackMarker(marker, size, major) {
+function highlightTrackMarker(marker) {
   resetActiveTrackMarker();
   activeTrackMarker = marker;
-  activeMarkerStyle = {
-    radius: size / 2,
-    weight: major ? 2.5 : 1.5,
-  };
-  marker.setStyle({
-    radius: size / 2 + 2,
-    weight: major ? 3 : 2,
+  const node = marker.getElement();
+  if (node) node.classList.add("is-active");
+}
+
+/** Kurs über Grund in Grad (0 = Nord). Fallback: Richtung zum nächsten/vorherigen Punkt. */
+function courseForPoint(points, index) {
+  const cog = points[index].cog;
+  if (cog != null && Number.isFinite(Number(cog)) && Number(cog) >= 0) {
+    return ((Number(cog) % 360) + 360) % 360;
+  }
+  const cur = points[index];
+  const next = points[index + 1];
+  if (next) return bearingDeg(cur.lat, cur.lon, next.lat, next.lon);
+  const prev = points[index - 1];
+  if (prev) return bearingDeg(prev.lat, prev.lon, cur.lat, cur.lon);
+  return 0;
+}
+
+function bearingDeg(lat1, lon1, lat2, lon2) {
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function trackArrowIcon(color, size, courseDeg, major) {
+  const half = size / 2;
+  const stroke = major ? 2 : 1.5;
+  return L.divIcon({
+    className: major ? "track-arrow-wrap is-major" : "track-arrow-wrap",
+    html: `<div class="track-arrow" style="--course:${courseDeg}deg;--arrow:${color};width:${size}px;height:${size}px">
+      <svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">
+        <path d="M12 2.5 L20.5 20.5 L12 15.5 L3.5 20.5 Z"
+          fill="${color}" stroke="#fff" stroke-width="${stroke}"
+          stroke-linejoin="round"/>
+      </svg>
+    </div>`,
+    iconSize: [size, size],
+    iconAnchor: [half, half],
   });
 }
 
@@ -494,17 +528,15 @@ function drawTrack(points) {
   }
   flush();
 
-  points.forEach((p) => {
+  points.forEach((p, i) => {
     const major = p.recordtype === 1;
-    const size = major ? 12 : 7;
+    const size = major ? 18 : 12;
     const color = statusInfo(p.status).color;
-    const marker = L.circleMarker([p.lat, p.lon], {
-      radius: size / 2,
-      color: "#ffffff",
-      weight: major ? 2.5 : 1.5,
-      fillColor: color,
-      fillOpacity: 0.95,
-      className: major ? "track-dot is-major" : "track-dot",
+    const course = courseForPoint(points, i);
+    const marker = L.marker([p.lat, p.lon], {
+      icon: trackArrowIcon(color, size, course, major),
+      interactive: true,
+      keyboard: false,
     });
 
     marker.on("mouseover", (e) => {
@@ -512,7 +544,7 @@ function drawTrack(points) {
       el.card.hidden = false;
       el.card.innerHTML = popupHtml(p);
       placeCard(e.latlng);
-      highlightTrackMarker(marker, size, major);
+      highlightTrackMarker(marker);
     });
 
     marker.on("mousemove", (e) => placeCard(e.latlng));
