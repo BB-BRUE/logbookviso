@@ -64,7 +64,14 @@ const map = L.map("map", {
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  attribution:
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+}).addTo(map);
+
+L.tileLayer("https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png", {
+  maxZoom: 18,
+  attribution:
+    '&copy; <a href="https://www.openseamap.org/">OpenSeaMap</a> contributors',
 }).addTo(map);
 
 function statusInfo(code) {
