@@ -16,11 +16,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY logbookviso ./logbookviso
 COPY server.py .
-COPY photos_store.py .
-COPY logbook_store.py .
-COPY users_store.py .
-COPY auth_helpers.py .
 COPY static ./static
 
 RUN mkdir -p /data/photos /data/logbook_uploads

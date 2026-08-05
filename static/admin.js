@@ -5,23 +5,6 @@ const newToerns = document.getElementById("newToerns");
 let allToerns = [];
 let users = [];
 
-function showToast(msg) {
-  const el = document.getElementById("toast");
-  el.hidden = false;
-  el.textContent = msg;
-  setTimeout(() => {
-    el.hidden = true;
-  }, 3500);
-}
-
-function escapeHtml(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
 function toernLabel(t) {
   return `${t.name} (#${t.id})`;
 }
@@ -156,9 +139,7 @@ function renderUsers() {
 }
 
 async function loadToerns() {
-  const res = await apiFetch("/api/toerns");
-  if (!res.ok) throw new Error("Törns konnten nicht geladen werden.");
-  allToerns = await res.json();
+  allToerns = await fetchToerns();
   fillToernChecklist(newToerns, []);
 }
 
@@ -232,11 +213,7 @@ userList.addEventListener("click", async (e) => {
 });
 
 async function main() {
-  const me = await loadCurrentUser();
-  if (!me?.isAdmin) {
-    window.location.href = "/";
-    return;
-  }
+  if (!(await requireAdminOrRedirect())) return;
   try {
     await loadToerns();
     document.getElementById("newRole")?.addEventListener("change", (e) => {

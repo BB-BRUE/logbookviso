@@ -1,26 +1,31 @@
-"""Logbook track map – API + static frontend; App-Daten in system DB (SYSTEM_DB)."""
+"""
+Logbook Viso – Flask-App (WSGI-Einstieg: ``server:app``).
+
+Routen: statische SPA-Seiten unter /static, JSON-API unter /api/*.
+"""
 
 from __future__ import annotations
 
-import json
 import os
-import sqlite3
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Flask, jsonify, redirect, request, send_from_directory
 
-from auth_helpers import (
+from logbookviso.api_format import STATUS_LABELS, clean_num, fmt_time, parse_revier
+from logbookviso.auth_helpers import (
     current_user,
     login_user,
     logout_user,
+    redirect_if_not_admin,
+    redirect_if_not_logged_in,
     require_admin_api,
     require_login_api,
     require_photo_edit,
     require_toern_access,
 )
-from logbook_store import (
+from logbookviso.config import settings
+from logbookviso.logbook_store import (
     import_toerns_from_file,
     list_imported_toern_ids,
     list_toerns_in_logbook,
@@ -29,7 +34,7 @@ from logbook_store import (
     track_timeline,
     validate_logbook_file,
 )
-from photos_store import (
+from logbookviso.photos_store import (
     VIDEO_EXT,
     clusters_to_json,
     cluster_photos,
@@ -39,13 +44,14 @@ from photos_store import (
     init_system_db,
     list_photos,
     list_photos_manage,
+    photo_created_at_ms,
     photo_manage_dict,
     photo_to_map_json,
     photo_has_coordinates,
     save_upload,
     update_photo,
 )
-from users_store import (
+from logbookviso.users_store import (
     ROLE_ADMIN,
     authenticate,
     can_edit_photo,
@@ -58,33 +64,19 @@ from users_store import (
     username_for_id,
 )
 
-ROOT = Path(__file__).resolve().parent
-# Zentrale App-DB: Törns, Tracks, Fotos-Metadaten, Benutzer
-SYSTEM_DB = Path(os.environ.get("SYSTEM_DB", str(ROOT / "data/system.sqlite")))
-PHOTOS_DIR = Path(os.environ.get("PHOTOS_DIR", str(ROOT / "data/photos")))
-LOGBOOK_UPLOAD_DIR = Path(
-    os.environ.get("LOGBOOK_UPLOAD_DIR", str(SYSTEM_DB.parent / "logbook_uploads"))
-)
-STATIC = ROOT / "static"
-MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "256"))
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-change-me-in-production")
-INIT_ADMIN_USER = os.environ.get("INIT_ADMIN_USER", "admin")
-INIT_ADMIN_PASSWORD = os.environ.get("INIT_ADMIN_PASSWORD", "admin")
-
-STATUS_LABELS = {
-    0: "Segeln",
-    1: "Festgemacht",
-    2: "Motor",
-    3: "Anker",
-}
+SYSTEM_DB = settings.system_db
+PHOTOS_DIR = settings.photos_dir
+LOGBOOK_UPLOAD_DIR = settings.logbook_upload_dir
+STATIC = settings.static_dir
+MAX_UPLOAD_MB = settings.max_upload_mb
 
 app = Flask(__name__, static_folder=str(STATIC), static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
-app.config["SECRET_KEY"] = SECRET_KEY
+app.config["SECRET_KEY"] = settings.secret_key
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-ensure_bootstrap_admin(SYSTEM_DB, INIT_ADMIN_USER, INIT_ADMIN_PASSWORD)
+ensure_bootstrap_admin(SYSTEM_DB, settings.init_admin_user, settings.init_admin_password)
 init_system_db(SYSTEM_DB)
 LOGBOOK_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -102,44 +94,6 @@ def request_entity_too_large(_exc):
         ),
         413,
     )
-
-
-def parse_revier(raw: str | None) -> str:
-    if not raw:
-        return ""
-    raw = raw.strip()
-    if raw.startswith("{"):
-        try:
-            data = json.loads(raw)
-            return str(data.get("jToernRevier") or "")
-        except json.JSONDecodeError:
-            return ""
-    return raw
-
-
-def fmt_time(ms: int | None) -> str | None:
-    if ms is None:
-        return None
-    try:
-        return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime(
-            "%Y-%m-%d %H:%M:%S UTC"
-        )
-    except (OSError, OverflowError, ValueError):
-        return str(ms)
-
-
-def clean_num(value, digits: int | None = None):
-    if value is None:
-        return None
-    try:
-        n = float(value)
-    except (TypeError, ValueError):
-        return None
-    if n < 0 and n > -1.5:
-        return None
-    if digits is not None:
-        return round(n, digits)
-    return n
 
 
 def _upload_path(upload_id: str) -> Path | None:
@@ -161,11 +115,9 @@ def _cleanup_old_logbook_uploads(keep_id: str | None = None) -> None:
 
 @app.get("/admin/logbook")
 def admin_logbook_page():
-    user = current_user(SYSTEM_DB)
-    if user is None:
-        return redirect("/login?next=/admin/logbook")
-    if user.role != ROLE_ADMIN:
-        return redirect("/")
+    denied = redirect_if_not_admin(SYSTEM_DB, "/admin/logbook")
+    if denied:
+        return denied
     return send_from_directory(STATIC, "logbook-import.html")
 
 
@@ -178,25 +130,25 @@ def login_page():
 
 @app.get("/admin")
 def admin_page():
-    user = current_user(SYSTEM_DB)
-    if user is None:
-        return redirect("/login?next=/admin")
-    if user.role != ROLE_ADMIN:
-        return redirect("/")
+    denied = redirect_if_not_admin(SYSTEM_DB, "/admin")
+    if denied:
+        return denied
     return send_from_directory(STATIC, "admin.html")
 
 
 @app.get("/")
 def index():
-    if current_user(SYSTEM_DB) is None:
-        return redirect("/login")
+    denied = redirect_if_not_logged_in(SYSTEM_DB, "/")
+    if denied:
+        return denied
     return send_from_directory(STATIC, "index.html")
 
 
 @app.get("/photos")
 def photos_manage_page():
-    if current_user(SYSTEM_DB) is None:
-        return redirect("/login?next=/photos")
+    denied = redirect_if_not_logged_in(SYSTEM_DB, "/photos")
+    if denied:
+        return denied
     return send_from_directory(STATIC, "photos-manage.html")
 
 
@@ -472,22 +424,10 @@ def api_photos_update(photo_id: int, user):
     if photo is None:
         return jsonify({"error": "Foto nicht gefunden."}), 404
 
-    created_at_ms = None
-    conn = sqlite3.connect(SYSTEM_DB)
-    conn.row_factory = sqlite3.Row
-    try:
-        row = conn.execute(
-            "SELECT created_at_ms FROM photos WHERE id = ?", (photo_id,)
-        ).fetchone()
-        if row:
-            created_at_ms = row["created_at_ms"]
-    finally:
-        conn.close()
-
     return jsonify(
         photo_manage_dict(
             photo,
-            created_at_ms,
+            photo_created_at_ms(SYSTEM_DB, photo_id),
             can_edit=True,
             uploaded_by_username=username_for_id(
                 SYSTEM_DB, photo.uploaded_by_user_id

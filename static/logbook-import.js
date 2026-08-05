@@ -9,23 +9,6 @@ const importedList = document.getElementById("importedList");
 
 let uploadId = null;
 
-function showToast(msg) {
-  const el = document.getElementById("toast");
-  el.hidden = false;
-  el.textContent = msg;
-  setTimeout(() => {
-    el.hidden = true;
-  }, 4500);
-}
-
-function escapeHtml(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
 function selectedPickIds() {
   return [...toernPickList.querySelectorAll('input[type="checkbox"]:checked')].map((el) =>
     Number(el.dataset.toernId)
@@ -52,12 +35,13 @@ function renderPickList(toerns) {
 }
 
 async function loadImportedToerns() {
-  const res = await apiFetch("/api/toerns");
-  if (!res.ok) {
+  let toerns;
+  try {
+    toerns = await fetchToerns();
+  } catch {
     importedList.innerHTML = '<p class="hint">Konnte Törns nicht laden.</p>';
     return;
   }
-  const toerns = await res.json();
   if (!toerns.length) {
     importedList.innerHTML =
       '<p class="hint">Noch keine Törns in der App – Logbook hochladen und importieren.</p>';
@@ -140,7 +124,7 @@ importBtn.addEventListener("click", async () => {
     if (!res.ok) throw new Error(data.error || "Import fehlgeschlagen.");
     let msg = data.message || "Import abgeschlossen.";
     if (data.errors?.length) msg += ` Hinweise: ${data.errors.join("; ")}`;
-    showToast(msg);
+    showToast(msg, { duration: 4500 });
     uploadId = null;
     pickPanel.hidden = true;
     uploadForm.reset();
@@ -154,11 +138,7 @@ importBtn.addEventListener("click", async () => {
 });
 
 async function main() {
-  const me = await loadCurrentUser();
-  if (!me?.isAdmin) {
-    window.location.href = "/";
-    return;
-  }
+  if (!(await requireAdminOrRedirect())) return;
   await loadImportedToerns();
 }
 

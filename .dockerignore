@@ -1,11 +1,40 @@
+# Git & CI
 .git
 .gitignore
-__pycache__
-*.pyc
-*.pyo
-.env
+.github
+
+# Dokumentation & Beispiele (nicht fürs Image nötig)
+docs/
+*.md
+swag/
+
+# Lokale Entwicklung
 .venv
 venv
-logbook.sqlite
-data/*.sqlite
-*.md
+ENV
+.vscode
+.idea
+*.swp
+
+# Python-Artefakte
+__pycache__
+**/__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Secrets & lokale Env
+.env
+.env.*
+
+# Persistente App-Daten (kommen per Volume mount)
+data/
+*.sqlite
+*.sqlite-journal
+
+# Sonstiges
+.DS_Store
+Thumbs.db
+*.log

@@ -52,8 +52,8 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
-from logbook_store import init_logbook_schema
-from users_store import init_app_db as _init_users_schema
+from logbookviso.logbook_store import init_logbook_schema
+from logbookviso.users_store import init_app_db as _init_users_schema
 
 
 def init_system_db(db_path: Path) -> None:
@@ -658,6 +658,17 @@ def get_photo(db_path: Path, photos_dir: Path, photo_id: int) -> tuple[StoredPho
     if not path.is_file():
         return photo, None
     return photo, path
+
+
+def photo_created_at_ms(db_path: Path, photo_id: int) -> int | None:
+    """Upload-Zeitstempel für Manage-API-Antworten."""
+    with get_photos_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT created_at_ms FROM photos WHERE id = ?", (photo_id,)
+        ).fetchone()
+    if row is None:
+        return None
+    return row["created_at_ms"]
 
 
 def cluster_photos(photos: list[StoredPhoto], radius_m: float = CLUSTER_RADIUS_M) -> list[PhotoCluster]:

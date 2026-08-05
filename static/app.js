@@ -38,7 +38,6 @@ let trackLayer = null;
 let photoLayer = null;
 let trackBounds = null;
 let photoBounds = null;
-let toastTimer = null;
 let lightboxPhotos = [];
 let lightboxIndex = 0;
 let hoverHideTimer = null;
@@ -115,15 +114,6 @@ function renderLegend() {
     .join("");
 }
 
-function showToast(message) {
-  el.toast.hidden = false;
-  el.toast.textContent = message;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    el.toast.hidden = true;
-  }, 3200);
-}
-
 function renderMeta(toern) {
   if (!toern) {
     el.meta.hidden = true;
@@ -139,14 +129,6 @@ function renderMeta(toern) {
 
   el.meta.hidden = false;
   el.meta.innerHTML = `<strong>${escapeHtml(toern.name)}</strong>${parts.join("")}`;
-}
-
-function escapeHtml(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
 
 function popupHtml(p) {
@@ -579,41 +561,12 @@ async function loadPhotos(toernId) {
 }
 
 async function loadToerns() {
-  const res = await apiFetch("/api/toerns");
-  if (!res.ok) throw new Error("Törns konnten nicht geladen werden.");
-  const toerns = await res.json();
-
-  el.select.innerHTML = "";
-  const usable = toerns.filter((t) => t.pointsWithCoords > 0);
-  const empty = toerns.filter((t) => t.pointsWithCoords === 0);
-
-  if (!usable.length) {
-    el.select.innerHTML = "<option>Keine Tracks mit Koordinaten</option>";
-    showToast("Keine Törns mit GPS-Daten gefunden.");
+  const toerns = await fetchToerns();
+  const { hasUsable } = fillToernSelect(el.select, toerns, "map");
+  if (!hasUsable) {
+    showToast("Keine Törns mit GPS-Daten gefunden.", { duration: 3200 });
     return [];
   }
-
-  usable.forEach((t) => {
-    const opt = document.createElement("option");
-    opt.value = String(t.id);
-    opt.textContent = `${t.name} (${t.pointsWithCoords} Pts)`;
-    el.select.appendChild(opt);
-  });
-
-  if (empty.length) {
-    const group = document.createElement("optgroup");
-    group.label = "Ohne Koordinaten";
-    empty.forEach((t) => {
-      const opt = document.createElement("option");
-      opt.value = String(t.id);
-      opt.textContent = `${t.name} (0)`;
-      opt.disabled = true;
-      group.appendChild(opt);
-    });
-    el.select.appendChild(group);
-  }
-
-  el.select.disabled = false;
   return toerns;
 }
 

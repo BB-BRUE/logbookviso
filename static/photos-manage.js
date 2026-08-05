@@ -12,25 +12,7 @@ const el = {
   filterUnlocated: document.getElementById("filterUnlocatedOnly"),
 };
 
-let toastTimer = null;
 let allPhotos = [];
-
-function showToast(msg) {
-  el.toast.hidden = false;
-  el.toast.textContent = msg;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    el.toast.hidden = true;
-  }, 3500);
-}
-
-function escapeHtml(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
 
 function fmtTime(ms) {
   if (!ms) return "—";
@@ -51,23 +33,9 @@ function syncBackLink() {
 }
 
 async function loadToerns() {
-  const res = await apiFetch("/api/toerns");
-  if (!res.ok) throw new Error("Törns konnten nicht geladen werden.");
-  const toerns = await res.json();
-  el.select.innerHTML = "";
-  toerns.forEach((t) => {
-    const opt = document.createElement("option");
-    opt.value = String(t.id);
-    opt.textContent = `${t.name} (${t.id})`;
-    el.select.appendChild(opt);
-  });
-  el.select.disabled = false;
-
-  const params = new URLSearchParams(window.location.search);
-  const fromUrl = params.get("toern");
-  if (fromUrl && [...el.select.options].some((o) => o.value === fromUrl)) {
-    el.select.value = fromUrl;
-  }
+  const toerns = await fetchToerns();
+  fillToernSelect(el.select, toerns, "manage");
+  applyToernFromUrl(el.select);
   syncBackLink();
   return toerns;
 }

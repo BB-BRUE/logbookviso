@@ -1,3 +1,38 @@
+# Laufzeitdaten (DB, Medien, Logbook-Uploads) – nur lokal / Docker-Volume
 /data/
-__pycache__/
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtuelle Umgebungen
+.venv/
+venv/
+ENV/
+
+# Geheimnisse & lokale Konfiguration
+.env
+.env.*
+!.env.example
+
+# SQLite außerhalb von data/ (falls kopiert)
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Tests / Typisierung
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# OS / Editor (launch.json bleibt im Repo)
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

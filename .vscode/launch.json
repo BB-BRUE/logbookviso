@@ -12,7 +12,8 @@
             "env": {
                 "FLASK_APP": "server.py",
                 "FLASK_DEBUG": "1",
-                "MAX_UPLOAD_MB": "256"
+                "MAX_UPLOAD_MB": "256",
+                "PYTHONPATH": "${workspaceFolder}"
             },
             "args": [
                 "run",
