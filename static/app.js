@@ -9,7 +9,7 @@ const STATUS = {
 const WEATHER_INTERVAL_SM = 15;
 const WEATHER_WINDOW_SM = WEATHER_INTERVAL_SM / 2;
 /** Versatz der Wetter-Symbole quer zum Track (Meter) */
-const WEATHER_OFFSET_M = 320;
+const WEATHER_OFFSET_M = 1600;
 
 const MOBILE_SIDEBAR_MQ = window.matchMedia("(max-width: 860px)");
 const SIDEBAR_OPEN_KEY = "logbookviso.sidebarOpen";
@@ -472,10 +472,10 @@ function drawWeatherSamples(points) {
         [s.markerLat, s.markerLon],
       ],
       {
-        color: "rgba(142, 182, 232, 0.55)",
-        weight: 1.25,
-        dashArray: "3 5",
-        opacity: 0.9,
+        color: "#b6d6f7",
+        weight: 2.5,
+        dashArray: "7 5",
+        opacity: 1,
         interactive: false,
         className: "weather-leader",
       }
@@ -491,12 +491,18 @@ function drawWeatherSamples(points) {
     marker.on("mouseover", (e) => {
       clearHoverHideTimer();
       resetActiveTrackMarker();
+      const node = marker.getElement();
+      if (node) node.classList.add("is-hover");
       el.card.hidden = false;
       el.card.innerHTML = weatherPopupHtml(s);
       placeCard(e.latlng);
     });
     marker.on("mousemove", (e) => placeCard(e.latlng));
-    marker.on("mouseout", () => scheduleHideHoverCard());
+    marker.on("mouseout", () => {
+      const node = marker.getElement();
+      if (node) node.classList.remove("is-hover");
+      scheduleHideHoverCard();
+    });
     marker.addTo(trackLayer);
   });
 }

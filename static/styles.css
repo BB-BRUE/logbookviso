@@ -689,15 +689,24 @@ body.lightbox-open {
   width: 72px;
   padding: 0.3rem 0.4rem;
   border-radius: 8px;
-  background: rgba(8, 22, 30, 0.9);
-  border: 1px solid rgba(142, 182, 232, 0.35);
+  background: rgba(8, 22, 30, 0.82);
+  border: 1px solid rgba(142, 182, 232, 0.45);
   color: #e8f2f4;
   font-family: var(--font-body);
   font-size: 0.68rem;
   line-height: 1.25;
   text-align: center;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   pointer-events: auto;
+  opacity: 0.48;
+  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.weather-marker-wrap.is-hover .weather-marker,
+.weather-marker-wrap:hover .weather-marker {
+  opacity: 1;
+  background: rgba(8, 22, 30, 0.96);
+  border-color: rgba(182, 214, 247, 0.7);
 }
 
 .weather-marker .wm-wind {
@@ -716,6 +725,13 @@ body.lightbox-open {
   transform-origin: center center;
   color: #8eb6e8;
   overflow: visible;
+}
+
+.leaflet-overlay-pane path.weather-leader {
+  stroke: #c5dff8;
+  stroke-width: 2.75;
+  stroke-opacity: 1;
+  stroke-linecap: round;
 }
 
 @keyframes slideIn {
