@@ -829,6 +829,22 @@ body.lightbox-open {
   border-top: none;
 }
 
+.file-pick-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.file-pick-hint {
+  margin: 0.35rem 0 0;
+}
+
+@media (max-width: 560px) {
+  .file-pick-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .photo-manage-list {
   display: grid;
   gap: 0.85rem;

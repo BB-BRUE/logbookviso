@@ -31,12 +31,32 @@
 
     <section class="manage-upload panel">
       <h2>Hochladen</h2>
-      <p class="hint">GPS optional — ohne Koordinaten möglich (später unter Fotos bearbeiten nachtragen).</p>
+      <p class="hint">
+        GPS optional — ohne Koordinaten möglich (später nachtragen).
+        Am Handy behält „Aus Dateien“ EXIF-GPS oft besser als die Galerie.
+      </p>
       <form id="photoUpload" class="upload-form manage-upload-form">
-        <label class="field">
-          <span>Dateien</span>
-          <input type="file" id="photoFiles" accept="image/*,video/mp4,video/quicktime,.mp4,.mov,.m4v" multiple required />
-        </label>
+        <div class="file-pick-row">
+          <label class="field file-pick">
+            <span>Aus Galerie</span>
+            <input
+              type="file"
+              id="photoFilesGallery"
+              accept="image/*,video/mp4,video/quicktime,.mp4,.mov,.m4v"
+              multiple
+            />
+          </label>
+          <label class="field file-pick">
+            <span>Aus Dateien</span>
+            <input
+              type="file"
+              id="photoFilesDisk"
+              accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.mov,.m4v"
+              multiple
+            />
+          </label>
+        </div>
+        <p id="photoFilesHint" class="hint file-pick-hint" hidden></p>
         <label class="field">
           <span>Titel (optional)</span>
           <input type="text" id="photoTitle" placeholder="z. B. Ankerplatz" />

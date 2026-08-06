@@ -4,6 +4,9 @@ const el = {
   count: document.getElementById("photoCount"),
   upload: document.getElementById("photoUpload"),
   uploadBtn: document.getElementById("photoUploadBtn"),
+  filesGallery: document.getElementById("photoFilesGallery"),
+  filesDisk: document.getElementById("photoFilesDisk"),
+  filesHint: document.getElementById("photoFilesHint"),
   back: document.getElementById("backToMap"),
   toast: document.getElementById("toast"),
   importBtn: document.getElementById("importFolderBtn"),
@@ -181,10 +184,36 @@ async function importFromFolder(toernId) {
   }
 }
 
-async function uploadPhotos(toernId) {
-  const files = document.getElementById("photoFiles")?.files;
+function selectedUploadFiles() {
+  const gallery = el.filesGallery?.files;
+  const disk = el.filesDisk?.files;
+  if (disk?.length) return { files: disk, source: "Dateien" };
+  if (gallery?.length) return { files: gallery, source: "Galerie" };
+  return { files: null, source: null };
+}
+
+function syncFilePickHint() {
+  if (!el.filesHint) return;
+  const { files, source } = selectedUploadFiles();
   if (!files?.length) {
-    showToast("Bitte Dateien auswählen.");
+    el.filesHint.hidden = true;
+    el.filesHint.textContent = "";
+    return;
+  }
+  const n = files.length;
+  el.filesHint.hidden = false;
+  el.filesHint.textContent = `${n} Datei${n === 1 ? "" : "en"} aus ${source} gewählt.`;
+}
+
+function onFilePickChange(active, other) {
+  if (active?.files?.length && other) other.value = "";
+  syncFilePickHint();
+}
+
+async function uploadPhotos(toernId) {
+  const { files } = selectedUploadFiles();
+  if (!files?.length) {
+    showToast("Bitte Dateien aus Galerie oder Dateimanager wählen.");
     return;
   }
   const form = new FormData();
@@ -211,6 +240,7 @@ async function uploadPhotos(toernId) {
     if (!res.ok) throw new Error(data.error || "Upload fehlgeschlagen.");
     showToast(`${data.count} Foto(s) hochgeladen.`);
     el.upload.reset();
+    syncFilePickHint();
     await loadPhotos(toernId);
   } catch (err) {
     showToast(err.message || "Upload fehlgeschlagen");
@@ -250,6 +280,13 @@ el.select.addEventListener("change", async () => {
   } catch (err) {
     showToast(err.message);
   }
+});
+
+el.filesGallery?.addEventListener("change", () => {
+  onFilePickChange(el.filesGallery, el.filesDisk);
+});
+el.filesDisk?.addEventListener("change", () => {
+  onFilePickChange(el.filesDisk, el.filesGallery);
 });
 
 el.upload.addEventListener("submit", async (e) => {
