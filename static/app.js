@@ -5,6 +5,12 @@ const STATUS = {
   3: { label: "Anker", color: "#4a7fcb" },
 };
 
+/** Abstand der Wetter-Symbole entlang des Logs (Seemeilen) */
+const WEATHER_INTERVAL_SM = 15;
+const WEATHER_WINDOW_SM = WEATHER_INTERVAL_SM / 2;
+/** Versatz der Wetter-Symbole quer zum Track (Meter) */
+const WEATHER_OFFSET_M = 320;
+
 const MOBILE_SIDEBAR_MQ = window.matchMedia("(max-width: 860px)");
 const SIDEBAR_OPEN_KEY = "logbookviso.sidebarOpen";
 
@@ -257,6 +263,241 @@ function trackArrowIcon(color, size, courseDeg, major) {
     </div>`,
     iconSize: [size, size],
     iconAnchor: [half, half],
+  });
+}
+
+function avgNum(values) {
+  const nums = values
+    .filter((v) => v != null && Number.isFinite(Number(v)))
+    .map(Number);
+  if (!nums.length) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+/** Windrichtung (FROM) als gewichtetes Kreis-Mittel; Gewicht = Windgeschwindigkeit. */
+function avgWindDir(points) {
+  let sinSum = 0;
+  let cosSum = 0;
+  let wSum = 0;
+  for (const p of points) {
+    if (p.windTwd == null || !Number.isFinite(Number(p.windTwd))) continue;
+    if (Number(p.windTwd) < 0) continue;
+    const w =
+      p.windTws != null && Number.isFinite(Number(p.windTws)) && Number(p.windTws) > 0
+        ? Number(p.windTws)
+        : 1;
+    const r = (Number(p.windTwd) * Math.PI) / 180;
+    sinSum += w * Math.sin(r);
+    cosSum += w * Math.cos(r);
+    wSum += w;
+  }
+  if (!wSum) return null;
+  return ((Math.atan2(sinSum, cosSum) * 180) / Math.PI + 360) % 360;
+}
+
+function round1(n) {
+  return n == null ? null : Math.round(n * 10) / 10;
+}
+
+/** Punkt um distanceM Meter in Richtung bearingDeg (0 = Nord) verschieben. */
+function offsetLatLon(lat, lon, bearingDeg, distanceM) {
+  const R = 6371000;
+  const δ = distanceM / R;
+  const θ = (bearingDeg * Math.PI) / 180;
+  const φ1 = (lat * Math.PI) / 180;
+  const λ1 = (lon * Math.PI) / 180;
+  const sinφ1 = Math.sin(φ1);
+  const cosφ1 = Math.cos(φ1);
+  const sinδ = Math.sin(δ);
+  const cosδ = Math.cos(δ);
+  const φ2 = Math.asin(sinφ1 * cosδ + cosφ1 * sinδ * Math.cos(θ));
+  const λ2 =
+    λ1 +
+    Math.atan2(Math.sin(θ) * sinδ * cosφ1, cosδ - sinφ1 * Math.sin(φ2));
+  return [(φ2 * 180) / Math.PI, (((λ2 * 180) / Math.PI + 540) % 360) - 180];
+}
+
+function courseAtLoggedIndex(logged, index) {
+  const p = logged[index];
+  if (p.cog != null && Number.isFinite(Number(p.cog)) && Number(p.cog) >= 0) {
+    return ((Number(p.cog) % 360) + 360) % 360;
+  }
+  const next = logged[index + 1];
+  if (next) return bearingDeg(p.lat, p.lon, next.lat, next.lon);
+  const prev = logged[index - 1];
+  if (prev) return bearingDeg(prev.lat, prev.lon, p.lat, p.lon);
+  return 0;
+}
+
+function fmtShortTime(ts) {
+  if (ts == null) return "—";
+  try {
+    return (
+      new Date(ts).toLocaleString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "UTC",
+      }) + " UTC"
+    );
+  } catch {
+    return "—";
+  }
+}
+
+/**
+ * Wind-Samples alle WEATHER_INTERVAL_SM laut Logge; Mittelwerte aus Punkten ± Fenster.
+ * Position = nächster Track-Punkt zum Sample-Log.
+ */
+function buildWeatherSamples(points) {
+  const logged = points.filter(
+    (p) => p.log != null && Number.isFinite(Number(p.log))
+  );
+  if (!logged.length) return [];
+
+  const logStart = Number(logged[0].log);
+  const logEnd = Number(logged[logged.length - 1].log);
+  if (!(logEnd > logStart)) return [];
+
+  const samples = [];
+
+  for (
+    let target = logStart;
+    target <= logEnd;
+    target += WEATHER_INTERVAL_SM
+  ) {
+    let nearestIdx = 0;
+    let bestD = Math.abs(Number(logged[0].log) - target);
+    for (let i = 1; i < logged.length; i += 1) {
+      const d = Math.abs(Number(logged[i].log) - target);
+      if (d < bestD) {
+        bestD = d;
+        nearestIdx = i;
+      }
+    }
+    const nearest = logged[nearestIdx];
+
+    const window = logged.filter(
+      (p) => Math.abs(Number(p.log) - target) <= WEATHER_WINDOW_SM
+    );
+    const pool = window.length ? window : [nearest];
+
+    const pressure = round1(avgNum(pool.map((p) => p.pressure)));
+    const wave = round1(avgNum(pool.map((p) => p.wave)));
+    const windTws = round1(avgNum(pool.map((p) => p.windTws)));
+    const windGusts = round1(avgNum(pool.map((p) => p.windGusts)));
+    const windTwdRaw = avgWindDir(pool);
+    const windTwd = windTwdRaw == null ? null : Math.round(windTwdRaw);
+
+    if (windTws == null && windTwd == null) continue;
+
+    const course = courseAtLoggedIndex(logged, nearestIdx);
+    const [offLat, offLon] = offsetLatLon(
+      nearest.lat,
+      nearest.lon,
+      course - 90,
+      WEATHER_OFFSET_M
+    );
+
+    samples.push({
+      lat: nearest.lat,
+      lon: nearest.lon,
+      markerLat: offLat,
+      markerLon: offLon,
+      course,
+      ts: nearest.ts != null ? Number(nearest.ts) : null,
+      time: nearest.time || fmtShortTime(nearest.ts),
+      log: round1(Number(nearest.log)),
+      targetLog: round1(target),
+      pressure,
+      wave,
+      windTws,
+      windTwd,
+      windGusts,
+      sampleCount: pool.length,
+    });
+  }
+
+  return samples;
+}
+
+function weatherPopupHtml(s) {
+  return `
+    <h3>
+      <span class="badge" style="background:rgba(74,127,203,0.25);color:#8eb6e8">Wetter</span>
+      Ø ${s.sampleCount} Punkte (±${WEATHER_WINDOW_SM} sm)
+    </h3>
+    <dl class="hover-grid">
+      <dt>Zeit</dt><dd>${escapeHtml(fmt(s.time))}</dd>
+      <dt>LOG</dt><dd>${escapeHtml(fmt(s.log, "sm"))}</dd>
+      <div class="section">Mittelwerte</div>
+      <dt>Luftdruck</dt><dd>${escapeHtml(fmt(s.pressure, "hPa"))}</dd>
+      <dt>Wind TWS</dt><dd>${escapeHtml(fmt(s.windTws, "kn"))}</dd>
+      <dt>Wind TWD</dt><dd>${escapeHtml(fmt(s.windTwd, "°"))}</dd>
+      <dt>Böen</dt><dd>${escapeHtml(fmt(s.windGusts, "kn"))}</dd>
+      <dt>Welle</dt><dd>${escapeHtml(fmt(s.wave, "m"))}</dd>
+    </dl>
+  `;
+}
+
+function weatherIcon(sample) {
+  const twd = sample.windTwd != null ? sample.windTwd : 0;
+  const speed =
+    sample.windTws != null ? fmt(sample.windTws, "kn") : fmt(sample.windTwd, "°");
+  const w = 72;
+  const h = 36;
+  return L.divIcon({
+    className: "weather-marker-wrap",
+    html: `<div class="weather-marker">
+      <div class="wm-wind">
+        <svg class="wm-arrow" style="--twd:${twd}deg" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path d="M12 3 L12 17 M12 3 L7 9 M12 3 L17 9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>${escapeHtml(speed)}</span>
+      </div>
+    </div>`,
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h / 2],
+  });
+}
+
+function drawWeatherSamples(points) {
+  const samples = buildWeatherSamples(points);
+
+  samples.forEach((s) => {
+    L.polyline(
+      [
+        [s.lat, s.lon],
+        [s.markerLat, s.markerLon],
+      ],
+      {
+        color: "rgba(142, 182, 232, 0.55)",
+        weight: 1.25,
+        dashArray: "3 5",
+        opacity: 0.9,
+        interactive: false,
+        className: "weather-leader",
+      }
+    ).addTo(trackLayer);
+
+    const marker = L.marker([s.markerLat, s.markerLon], {
+      icon: weatherIcon(s),
+      interactive: true,
+      keyboard: false,
+      zIndexOffset: 500,
+    });
+
+    marker.on("mouseover", (e) => {
+      clearHoverHideTimer();
+      resetActiveTrackMarker();
+      el.card.hidden = false;
+      el.card.innerHTML = weatherPopupHtml(s);
+      placeCard(e.latlng);
+    });
+    marker.on("mousemove", (e) => placeCard(e.latlng));
+    marker.on("mouseout", () => scheduleHideHoverCard());
+    marker.addTo(trackLayer);
   });
 }
 
@@ -555,6 +796,8 @@ function drawTrack(points) {
 
     marker.addTo(trackLayer);
   });
+
+  drawWeatherSamples(points);
 
   trackBounds = L.latLngBounds(latlngs);
   fitMapBounds();
