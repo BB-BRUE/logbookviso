@@ -4,6 +4,7 @@ const el = {
   count: document.getElementById("photoCount"),
   upload: document.getElementById("photoUpload"),
   uploadBtn: document.getElementById("photoUploadBtn"),
+  uploadWait: document.getElementById("photoUploadWait"),
   filesGallery: document.getElementById("photoFilesGallery"),
   filesDisk: document.getElementById("photoFilesDisk"),
   filesHint: document.getElementById("photoFilesHint"),
@@ -229,6 +230,7 @@ async function uploadPhotos(toernId) {
   for (const file of files) form.append("photos", file);
 
   el.uploadBtn.disabled = true;
+  if (el.uploadWait) el.uploadWait.hidden = false;
   try {
     const res = await apiFetch("/api/photos/upload", { method: "POST", body: form });
     let data = {};
@@ -246,6 +248,7 @@ async function uploadPhotos(toernId) {
     showToast(err.message || "Upload fehlgeschlagen");
   } finally {
     el.uploadBtn.disabled = false;
+    if (el.uploadWait) el.uploadWait.hidden = true;
   }
 }
 
