@@ -1180,10 +1180,25 @@ body.lightbox-open {
   padding: 0.45rem 0.15rem;
   list-style: none;
   color: var(--mist);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
 .sidebar-accordion summary::-webkit-details-marker {
   display: none;
+}
+
+.sidebar-accordion summary::after {
+  content: "▾";
+  font-size: 0.75rem;
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+}
+
+.sidebar-accordion[open] summary::after {
+  transform: rotate(180deg);
 }
 
 .sidebar-accordion-body {
@@ -1230,22 +1245,6 @@ body.lightbox-open {
 
 .leaflet-control-container .leaflet-top {
   top: 50px;
-}
-
-@media (min-width: 861px) {
-  .sidebar-accordion {
-    border: none;
-    padding: 0;
-    background: transparent;
-  }
-
-  .sidebar-accordion summary {
-    display: none;
-  }
-
-  .sidebar-accordion-body {
-    padding-top: 0;
-  }
 }
 
 @media (max-width: 860px) {
