@@ -40,6 +40,17 @@
         <a href="/admin/logbook" class="btn btn-nav" id="navLogbook" hidden>Logbook importieren</a>
       </nav>
 
+      <section class="sidebar-toggles" aria-label="Karten-Marker">
+        <label class="field field-check">
+          <input type="checkbox" id="showPhotos" checked />
+          <span>Foto-Marker</span>
+        </label>
+        <label class="field field-check">
+          <input type="checkbox" id="showWeather" checked />
+          <span>Wetter-Marker</span>
+        </label>
+      </section>
+
       <details class="sidebar-accordion" id="sidebarDetails">
         <summary>Details &amp; Karte</summary>
         <div class="sidebar-accordion-body">
@@ -51,10 +62,6 @@
             <p class="hint">Pfeile = Kurs; größere = manuelle Einträge. Wind-Symbole alle ~15&nbsp;sm Logge (Mittelwerte ±7,5&nbsp;sm).</p>
           </section>
 
-          <label class="field field-check">
-            <input type="checkbox" id="showPhotos" checked />
-            <span>Medien mit GPS auf der Karte</span>
-          </label>
           <label class="field field-check">
             <input type="checkbox" id="showUnlocatedOnly" />
             <span>Nur ohne Koordinaten anzeigen</span>

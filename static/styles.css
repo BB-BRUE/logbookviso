@@ -1144,6 +1144,20 @@ body.lightbox-open {
   gap: 0.45rem;
 }
 
+.sidebar-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sidebar-toggles .field-check {
+  margin: 0;
+}
+
 .btn-nav {
   width: 100%;
   text-align: center;

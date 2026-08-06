@@ -28,6 +28,7 @@ const el = {
   toast: document.getElementById("toast"),
   mapWrap: document.querySelector(".map-wrap"),
   showPhotos: document.getElementById("showPhotos"),
+  showWeather: document.getElementById("showWeather"),
   photoInfo: document.getElementById("photoInfo"),
   managePhotosLink: document.getElementById("managePhotosLink"),
   navAdmin: document.getElementById("navAdmin"),
@@ -41,9 +42,11 @@ const el = {
 };
 
 let trackLayer = null;
+let weatherLayer = null;
 let photoLayer = null;
 let trackBounds = null;
 let photoBounds = null;
+let lastTrackPoints = null;
 let lightboxPhotos = [];
 let lightboxIndex = 0;
 let hoverHideTimer = null;
@@ -463,7 +466,11 @@ function weatherIcon(sample) {
 }
 
 function drawWeatherSamples(points) {
+  clearWeather();
+  if (!el.showWeather?.checked) return;
+
   const samples = buildWeatherSamples(points);
+  weatherLayer = L.layerGroup().addTo(map);
 
   samples.forEach((s) => {
     L.polyline(
@@ -479,7 +486,7 @@ function drawWeatherSamples(points) {
         interactive: false,
         className: "weather-leader",
       }
-    ).addTo(trackLayer);
+    ).addTo(weatherLayer);
 
     const marker = L.marker([s.markerLat, s.markerLon], {
       icon: weatherIcon(s),
@@ -503,8 +510,15 @@ function drawWeatherSamples(points) {
       if (node) node.classList.remove("is-hover");
       scheduleHideHoverCard();
     });
-    marker.addTo(trackLayer);
+    marker.addTo(weatherLayer);
   });
+}
+
+function clearWeather() {
+  if (weatherLayer) {
+    map.removeLayer(weatherLayer);
+    weatherLayer = null;
+  }
 }
 
 function initPhotoLightbox() {
@@ -727,6 +741,8 @@ function clearTrack() {
     map.removeLayer(trackLayer);
     trackLayer = null;
   }
+  clearWeather();
+  lastTrackPoints = null;
   trackBounds = null;
   clearPhotos();
   el.card.hidden = true;
@@ -744,6 +760,7 @@ function drawTrack(points) {
     return;
   }
 
+  lastTrackPoints = points;
   trackLayer = L.layerGroup().addTo(map);
   const latlngs = points.map((p) => [p.lat, p.lon]);
 
@@ -881,6 +898,10 @@ async function main() {
     if (!Number.isFinite(id)) return;
     await loadPhotos(id);
     fitMapBounds();
+  });
+  el.showWeather?.addEventListener("change", () => {
+    if (lastTrackPoints?.length) drawWeatherSamples(lastTrackPoints);
+    else clearWeather();
   });
   el.showUnlocatedOnly?.addEventListener("change", async () => {
     if (lastPhotoPayload) {
