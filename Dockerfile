@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SYSTEM_DB=/data/system.sqlite \
     PHOTOS_DIR=/data/photos \
     LOGBOOK_UPLOAD_DIR=/data/logbook_uploads \
-    MAX_UPLOAD_MB=256 \
+    MAX_UPLOAD_MB=512 \
     SECRET_KEY=change-me-in-production \
     INIT_ADMIN_USER=admin \
     INIT_ADMIN_PASSWORD=admin \
@@ -24,4 +24,5 @@ RUN mkdir -p /data/photos /data/logbook_uploads
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "server:app"]
+# Access-/Error-Logs auf stdout/stderr → sichtbar mit `docker logs logbookviso`
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--access-logfile", "-", "--error-logfile", "-", "--capture-output", "--log-level", "info", "server:app"]

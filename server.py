@@ -6,7 +6,9 @@ Routen: statische SPA-Seiten unter /static, JSON-API unter /api/*.
 
 from __future__ import annotations
 
+import logging
 import os
+import sys
 import uuid
 from pathlib import Path
 
@@ -64,6 +66,27 @@ from logbookviso.users_store import (
     username_for_id,
 )
 
+
+def _configure_logging() -> None:
+    """App-Logs nach stdout (Docker: ``docker logs``)."""
+    root = logging.getLogger()
+    if root.handlers:
+        return
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    logging.getLogger("werkzeug").setLevel(logging.INFO)
+
+
+_configure_logging()
+log = logging.getLogger("logbookviso")
+
 SYSTEM_DB = settings.system_db
 PHOTOS_DIR = settings.photos_dir
 LOGBOOK_UPLOAD_DIR = settings.logbook_upload_dir
@@ -83,6 +106,12 @@ app.config["SESSION_COOKIE_SECURE"] = settings.session_cookie_secure
 ensure_bootstrap_admin(SYSTEM_DB, settings.init_admin_user, settings.init_admin_password)
 init_system_db(SYSTEM_DB)
 LOGBOOK_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+log.info(
+    "App bereit (DB=%s, photos=%s, max_upload=%s MB)",
+    SYSTEM_DB,
+    PHOTOS_DIR,
+    MAX_UPLOAD_MB,
+)
 
 
 @app.errorhandler(413)

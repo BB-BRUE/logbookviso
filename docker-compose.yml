@@ -8,7 +8,7 @@ services:
       SYSTEM_DB: /data/system.sqlite
       PHOTOS_DIR: /data/photos
       LOGBOOK_UPLOAD_DIR: /data/logbook_uploads
-      MAX_UPLOAD_MB: "256"
+      MAX_UPLOAD_MB: "512"
       # SECRET_KEY: set-a-long-random-string
       # SESSION_COOKIE_SECURE: "1"  # nur setzen, wenn per HTTPS erreichbar (z. B. hinter SWAG)
       # INIT_ADMIN_USER / INIT_ADMIN_PASSWORD: nur beim ersten Start (leere User-Tabelle)

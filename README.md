@@ -55,6 +55,12 @@ docker compose up --build
 
 App: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 
+Logs (Access + App) im Container:
+
+```bash
+docker logs -f logbookviso
+```
+
 ```yaml
 volumes:
   - ./data:/data
@@ -73,7 +79,7 @@ volumes:
 | `SYSTEM_DB` | `data/system.sqlite` | Zentrale SQLite-Datei |
 | `PHOTOS_DIR` | `data/photos` | Medien auf dem Dateisystem |
 | `LOGBOOK_UPLOAD_DIR` | `<DB-Ordner>/logbook_uploads` | Temporäre Viso-Uploads |
-| `MAX_UPLOAD_MB` | `256` | Max. Request-Größe (Upload) |
+| `MAX_UPLOAD_MB` | `512` | Max. Request-Größe (Upload) |
 | `SECRET_KEY` | `dev-change-me-in-production` | Flask-Session (in Produktion setzen!) |
 | `SESSION_COOKIE_SECURE` | `0` | `1` setzen, wenn nur per HTTPS erreichbar (z. B. hinter SWAG) |
 | `INIT_ADMIN_USER` | `admin` | Erster Admin, wenn keine User existieren |
@@ -128,7 +134,7 @@ Details siehe Routen in `server.py`.
 
 Koordinaten: EXIF (Bilder), QuickTime-GPS in MP4/MOV, manuelles LAT/LON, oder Matching zur Track-Zeit.
 
-Upload-Limit: **256 MB** (`MAX_UPLOAD_MB`). Hinter SWAG/Nginx `client_max_body_size` anpassen (siehe `swag/logbookviso.subdomain.conf`).
+Upload-Limit: **512 MB** (`MAX_UPLOAD_MB`). Die UI lädt große Auswahlen in Batches. Hinter SWAG/Nginx muss `client_max_body_size` gesetzt sein (siehe `swag/logbookviso.subdomain.conf`) – sonst antwortet Nginx mit **413**.
 
 ### SWAG Reverse Proxy
 

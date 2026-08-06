@@ -211,42 +211,113 @@ function onFilePickChange(active, other) {
   syncFilePickHint();
 }
 
+/** Pro Request unter typischen Reverse-Proxy-Limits bleiben (Nginx 413). */
+const UPLOAD_BATCH_MAX_BYTES = 40 * 1024 * 1024;
+const UPLOAD_BATCH_MAX_FILES = 8;
+
+function buildUploadBatches(files) {
+  const batches = [];
+  let batch = [];
+  let batchBytes = 0;
+  for (const file of files) {
+    const size = Number(file.size) || 0;
+    const wouldExceed =
+      batch.length > 0 &&
+      (batch.length >= UPLOAD_BATCH_MAX_FILES ||
+        batchBytes + size > UPLOAD_BATCH_MAX_BYTES);
+    if (wouldExceed) {
+      batches.push(batch);
+      batch = [];
+      batchBytes = 0;
+    }
+    batch.push(file);
+    batchBytes += size;
+  }
+  if (batch.length) batches.push(batch);
+  return batches;
+}
+
+function setUploadWaitText(text) {
+  const tip = el.uploadWait?.querySelector(".upload-wait-text");
+  if (tip) tip.textContent = text;
+}
+
+async function postPhotoBatch(toernId, files, meta) {
+  const form = new FormData();
+  form.append("toern", String(toernId));
+  if (meta.title) form.append("title", meta.title);
+  if (meta.lat && meta.lon) {
+    form.append("lat", meta.lat);
+    form.append("lon", meta.lon);
+  }
+  for (const file of files) form.append("photos", file);
+
+  const res = await apiFetch("/api/photos/upload", { method: "POST", body: form });
+  let data = {};
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(
+      res.status === 413
+        ? "Upload zu groß (Proxy-Limit). Weniger/kleinere Dateien oder SWAG client_max_body_size prüfen."
+        : `HTTP ${res.status}`
+    );
+  }
+  if (!res.ok) throw new Error(data.error || "Upload fehlgeschlagen.");
+  return data;
+}
+
 async function uploadPhotos(toernId) {
   const { files } = selectedUploadFiles();
   if (!files?.length) {
     showToast("Bitte Dateien aus Galerie oder Dateimanager wählen.");
     return;
   }
-  const form = new FormData();
-  form.append("toern", String(toernId));
   const title = document.getElementById("photoTitle")?.value?.trim();
   const lat = document.getElementById("photoLat")?.value?.trim();
   const lon = document.getElementById("photoLon")?.value?.trim();
-  if (title) form.append("title", title);
-  if (lat && lon) {
-    form.append("lat", lat);
-    form.append("lon", lon);
-  }
-  for (const file of files) form.append("photos", file);
+  const meta = { title, lat, lon };
+  const batches = buildUploadBatches([...files]);
 
   el.uploadBtn.disabled = true;
   if (el.uploadWait) el.uploadWait.hidden = false;
+  let totalSaved = 0;
+  const allErrors = [];
   try {
-    const res = await apiFetch("/api/photos/upload", { method: "POST", body: form });
-    let data = {};
-    try {
-      data = await res.json();
-    } catch {
-      throw new Error(res.status === 413 ? "Upload zu groß." : `HTTP ${res.status}`);
+    for (let i = 0; i < batches.length; i++) {
+      setUploadWaitText(
+        batches.length === 1
+          ? "Bitte warten – Upload läuft…"
+          : `Bitte warten – Upload ${i + 1}/${batches.length}…`
+      );
+      const data = await postPhotoBatch(toernId, batches[i], meta);
+      totalSaved += data.count || 0;
+      if (Array.isArray(data.errors) && data.errors.length) {
+        allErrors.push(...data.errors);
+      }
     }
-    if (!res.ok) throw new Error(data.error || "Upload fehlgeschlagen.");
-    showToast(`${data.count} Foto(s) hochgeladen.`);
+    if (totalSaved === 0 && allErrors.length) {
+      throw new Error(allErrors[0]);
+    }
+    const msg =
+      allErrors.length > 0
+        ? `${totalSaved} hochgeladen, ${allErrors.length} Fehler.`
+        : `${totalSaved} Foto(s) hochgeladen.`;
+    showToast(msg);
     el.upload.reset();
     syncFilePickHint();
     await loadPhotos(toernId);
   } catch (err) {
     showToast(err.message || "Upload fehlgeschlagen");
+    if (totalSaved > 0) {
+      try {
+        await loadPhotos(toernId);
+      } catch {
+        /* ignore */
+      }
+    }
   } finally {
+    setUploadWaitText("Bitte warten – Upload läuft…");
     el.uploadBtn.disabled = false;
     if (el.uploadWait) el.uploadWait.hidden = true;
   }
